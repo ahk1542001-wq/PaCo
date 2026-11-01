@@ -97,10 +97,14 @@ class MetaModelClient:
         except json.JSONDecodeError:
             return {"raw": text}
 
-    def generate_plan(self, brief: str, brand_voice: dict, context: str = "") -> dict:
+    def generate_plan(
+        self, brief: str, brand_voice: dict, context: str = "", trends: list | None = None
+    ) -> dict:
         payload = {"brief": brief, "brand_voice": brand_voice}
         if context:
             payload["previous_period"] = context
+        if trends:
+            payload["trends"] = trends
         return self._structured(
             "Create a 7-day content plan as JSON: {posts: [{day, platform, topic, angle, format}]}.",
             payload,
@@ -125,11 +129,14 @@ class MetaModelClient:
 class MockClient:
     """Canned structured outputs. Deterministic, offline, free."""
 
-    def generate_plan(self, brief: str, brand_voice: dict, context: str = "") -> dict:
+    def generate_plan(
+        self, brief: str, brand_voice: dict, context: str = "", trends: list | None = None
+    ) -> dict:
         brand = brand_voice.get("brand_name", "the brand")
         return {
             "brief": brief,
             "context": context,
+            "trends": trends or [],
             "posts": [
                 {
                     "day": "Mon",
@@ -146,11 +153,39 @@ class MockClient:
                     "format": "Carousel",
                 },
                 {
+                    "day": "Tue",
+                    "platform": "facebook",
+                    "topic": "Before and after: one inbox, zero missed price questions",
+                    "angle": "Show the saved replies, then the offer",
+                    "format": "Poster",
+                },
+                {
+                    "day": "Thu",
+                    "platform": "facebook",
+                    "topic": "Five questions your page should answer without you",
+                    "angle": "Checklist the owner can test tonight",
+                    "format": "Carousel",
+                },
+                {
                     "day": "Fri",
                     "platform": "linkedin",
                     "topic": "What a content pipeline does for a small team",
                     "angle": "Trust and process, with a soft offer",
                     "format": "Text post",
+                },
+                {
+                    "day": "Sat",
+                    "platform": "facebook",
+                    "topic": "Weekend orders while the shop is closed",
+                    "angle": "The bot takes the order, the owner confirms later",
+                    "format": "Short video",
+                },
+                {
+                    "day": "Sun",
+                    "platform": "facebook",
+                    "topic": "This week in your page inbox, in one report",
+                    "angle": "Tease the weekly performance report",
+                    "format": "Poster",
                 },
             ],
         }
@@ -160,12 +195,12 @@ class MockClient:
         text = (
             f"{topic}. We built this for SME owners who sell through their page and "
             "cannot sit in the inbox all day. Message us to get started, and we will "
-            "map the first step with you. #FYFAI #AIAutomation"
+            "map the first step with you. #FYFAI #AIAutomation #SME"
         )
         return {
             "platform": plan_item.get("platform", "facebook"),
             "text": text,
-            "hashtags": ["#FYFAI", "#AIAutomation"],
+            "hashtags": ["#FYFAI", "#AIAutomation", "#SME"],
         }
 
     def verdict(self, draft: dict, check_summary: str) -> dict:
