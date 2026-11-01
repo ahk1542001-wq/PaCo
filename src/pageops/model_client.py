@@ -97,10 +97,13 @@ class MetaModelClient:
         except json.JSONDecodeError:
             return {"raw": text}
 
-    def generate_plan(self, brief: str, brand_voice: dict) -> dict:
+    def generate_plan(self, brief: str, brand_voice: dict, context: str = "") -> dict:
+        payload = {"brief": brief, "brand_voice": brand_voice}
+        if context:
+            payload["previous_period"] = context
         return self._structured(
             "Create a 7-day content plan as JSON: {posts: [{day, platform, topic, angle, format}]}.",
-            {"brief": brief, "brand_voice": brand_voice},
+            payload,
             self.main_model,
         )
 
@@ -122,10 +125,11 @@ class MetaModelClient:
 class MockClient:
     """Canned structured outputs. Deterministic, offline, free."""
 
-    def generate_plan(self, brief: str, brand_voice: dict) -> dict:
+    def generate_plan(self, brief: str, brand_voice: dict, context: str = "") -> dict:
         brand = brand_voice.get("brand_name", "the brand")
         return {
             "brief": brief,
+            "context": context,
             "posts": [
                 {
                     "day": "Mon",

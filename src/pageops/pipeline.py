@@ -46,19 +46,34 @@ def intake_brief(store: Store, brief_text: str) -> dict:
     return store.add_plan_row({"status": "brief_received", "brief": brief_text})
 
 
-def fetch_trends(feeds_file=None, fetcher=None, limit: int = 5) -> list[dict]:
-    """Trend items with source links. Network only via the real fetcher."""
+def fetch_trends(store=None, feeds_file=None, fetcher=None, limit: int = 5) -> list[dict]:
+    """Trend items with source links. Network only via the real fetcher.
+
+    When a store is given, the fetched trends are snapshotted into
+    the Strategist's private notes (the private context layer).
+    """
     if fetcher is None:
         from .rss import fetch_feeds
 
         fetcher = fetch_feeds
-    return fetcher(feeds_file)[:limit]
+    items = fetcher(feeds_file)[:limit]
+    if store is not None:
+        from .context import save_trend_notes
+
+        save_trend_notes(store, items)
+    return items
 
 
 def generate_week(store: Store, client, brief_text: str) -> list[dict]:
-    """Generate the content plan for one brief and store each post."""
+    """Generate the content plan for one brief and store each post.
+
+    The long-term loop: the Analyst's latest history summary goes to
+    the planner as context, so last period's results shape this plan.
+    """
+    from .context import latest_analyst_summary
+
     brand = store.get_brand_voice()
-    plan = client.generate_plan(brief_text, brand)
+    plan = client.generate_plan(brief_text, brand, context=latest_analyst_summary(store))
     rows = []
     for post in plan.get("posts", []):
         rows.append(
