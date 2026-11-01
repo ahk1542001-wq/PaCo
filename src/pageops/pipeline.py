@@ -273,7 +273,7 @@ def link_post(store: Store, row_id: str, post_id: str) -> dict:
     return store.update_row("plan", row["id"], {"post_id": post_id})
 
 
-def report_week(store: Store, client=None, goal: str = "") -> dict:
+def report_week(store: Store, goal: str = "", client=None) -> dict:
     """The Analyst's stage act: build the report and record it.
 
     Recording means two writes: linked scheduled rows whose posts
@@ -286,7 +286,8 @@ def report_week(store: Store, client=None, goal: str = "") -> dict:
     report = build_report(store, goal=goal, client=client)
     covered = {r.get("post_id", "") for r in store.read_dataset("metrics")}
     for row in store.read_dataset("plan"):
-        if row.get("status") == "scheduled" and row.get("post_id") in covered and row.get("post_id"):
+        post_id = row.get("post_id", "")
+        if row.get("status") == "scheduled" and post_id and post_id in covered:
             store.update_row("plan", row["id"], {"status": "reported"})
     append_analyst_history(store, report["stats"])
     return report
