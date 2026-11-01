@@ -66,7 +66,7 @@ class MetaModelClient:
         self.main_model = os.environ.get("PAGEOPS_MAIN_MODEL") or MODEL_WONDER
         self.verdict_model = MODEL_WONDER
 
-    def chat(self, messages: list[dict], model: str = MODEL_SPARK, **kwargs) -> dict:
+    def chat(self, messages: list[dict], model: str = MODEL_WONDER, **kwargs) -> dict:
         if not self.api_key:
             raise RuntimeError("MODEL_API_KEY is not set; cannot call the Meta Model API.")
         import httpx  # imported lazily so mock mode never needs the package
@@ -195,12 +195,12 @@ class MockClient:
         text = (
             f"{topic}. We built this for SME owners who sell through their page and "
             "cannot sit in the inbox all day. Message us to get started, and we will "
-            "map the first step with you. #FYFAI #AIAutomation"
+            "map the first step with you. #FYFAI #AIAutomation #SME"
         )
         return {
             "platform": plan_item.get("platform", "facebook"),
             "text": text,
-            "hashtags": ["#FYFAI", "#AIAutomation"],
+            "hashtags": ["#FYFAI", "#AIAutomation", "#SME"],
         }
 
     def verdict(self, draft: dict, check_summary: str) -> dict:
