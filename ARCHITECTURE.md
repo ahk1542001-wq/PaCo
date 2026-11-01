@@ -5,27 +5,33 @@ runs a business page's weekly content operation end to end:
 one brief in, a week of checked and approved posts out, with a human
 approval gate that the code itself enforces. The demo brand is FYF AI.
 
-## Shape: one orchestrator, six sub-agents
+## Shape: a small marketing company — one CEO, six roles
 
-PageOps is not one monolithic agent. A single **orchestrator**
-(`pipeline.py`) owns the week's state and the order of work; each
-pipeline stage is a **sub-agent** with one job, a clear input and a
-clear output. No sub does another sub's work, and no sub runs unless
-the orchestrator calls it.
+PageOps runs like a small digital-marketing company, not one
+monolithic agent. A **CEO orchestrator** (`pipeline.py`) controls the
+team: it assigns work down the pipeline, enforces the human-approval
+gate, and consolidates the final report. Each role is a real position
+with a JD scope (what it owns, where its authority stops), assigned
+professional skills from evaluated marketing packs (reference only —
+read, understood, then implemented in our own code), and its own
+tools. The human owner sits above the CEO: the approval gate is the
+owner's click, and no role can cross it.
 
-| Sub-agent | File | Input → Output | Engine |
-|---|---|---|---|
-| **Orchestrator** (main) | `pipeline.py` | Brief → a week of checked items; owns state transitions and the revise-once loop | Code |
-| Research | `rss.py`, `pipeline.fetch_trends` | Feed list + brand metrics → trend items, each with a source link | Code |
-| Planner | `pipeline.generate_week` | Brief + brand voice + trends → 7 plan rows | Model |
-| Drafter | `pipeline.draft_and_check` | Plan row + brand voice → caption + hashtags | Model |
-| Checker | `checker.py` + verdict step | Full draft text + brand rules → pass/fail per rule with quoted evidence, then a model verdict | Code, then model |
-| Scheduler | `scheduler.py` | Approved item → Buffer queue ID, or a refusal | Code + Buffer API |
-| Reporter | `metrics.py`, `report.py` | Metrics rows + goal → report (numbers computed in code, narrative by the model) | Code, then model |
+**CEO — Orchestrator** (`pipeline.py`, code). JD: runs the week,
+briefs each role in order, routes pass / revise-once / flag, holds
+items at the gate, assembles the final report view. Stops: cannot
+approve, cannot schedule, cannot invent numbers. Skills: Pocock
+`grill-with-docs` + `to-spec`; gtm-fleet chief-of-staff roster
+pattern. Tools: the store, the dashboard, the usage log.
 
-The human approval gate sits between Checker and Scheduler. The
-orchestrator can move work up to that gate on its own; only a human
-click moves anything past it.
+| Role | File | JD scope — owns / stops | Skills (reference) | Tools |
+|---|---|---|---|---|
+| Trend Researcher | `rss.py`, `pipeline.fetch_trends` | Owns trend evidence with sources + the brand's own numbers. Stops: never picks topics or writes copy | gtm-fleet `content-researcher`; Haines `customer-research` | RSS feeds (5), feedparser, metrics store |
+| Content Strategist | `pipeline.generate_week` | Owns the 7-day plan (topic, angle, format, platform, slot). Stops: no final copy, no approvals | Haines `content-strategy`; gtm-fleet `campaign-plan` | Meta Model API (Wonder), brand voice store |
+| Copywriter | `pipeline.draft_and_check` | Owns captions + hashtags in the brand voice, and the one revision. Stops: cannot pass or approve its own work | Haines `copywriting` + `copy-editing`; social-media-skills | Meta Model API (Wonder), brand voice store |
+| Brand Compliance Reviewer | `checker.py` + verdict step | Owns pass/fail per rule with quoted evidence + the model verdict. Stops: never edits, never approves; rules are code | gtm-fleet `brand-review`; Expert Panel pattern | Checker code, Meta Model API (Wonder verdict) |
+| Distribution Coordinator | `scheduler.py` | Owns queueing approved posts + recording queue IDs. Stops: hard stop — refuses anything unapproved; cannot alter content | None assigned (packs do not cover scheduling) | Buffer API (dry-run until live), scheduler code |
+| Performance Analyst | `metrics.py`, `report.py` | Owns the weekly report (goal → strategy → execution → result). Stops: numbers only from the metrics store | gtm-fleet `performance-report`; Haines `analytics` | Metrics code, Meta Model API (Wonder), Sheets mirror |
 
 ## Flow
 
