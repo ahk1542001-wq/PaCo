@@ -37,6 +37,7 @@ code. A draft that fails the checker is revised once, then flagged.
 from __future__ import annotations
 
 from .checker import check_draft
+from .designer import produce_visual
 from .store import Store
 
 
@@ -102,8 +103,20 @@ def draft_and_check(store: Store, client, row: dict) -> dict:
         text = _full_text(draft)
         result = check_draft(text, item.get("platform", ""), brand)
     summary = result.summary()
+    # Visuals stage (Graphic Designer): the visual is produced from
+    # the final draft text, self-checked for template compliance, and
+    # its evidence joins the check evidence for the human. A failed
+    # visual flags the item instead of letting it through.
+    visual_ok = False
+    try:
+        updated = produce_visual(store, {**item, "draft": text})
+        visual_note = f"[VISUAL] PASS - {updated.get('visual', '')}"
+        visual_ok = True
+    except (ValueError, RuntimeError) as exc:
+        visual_note = f"[VISUAL] FAIL - {exc}"
+    summary += f"\n{visual_note}"
     status = "checked"
-    if result.passed:
+    if result.passed and visual_ok:
         # Deterministic rules passed; Muse Wonder gives the judgement
         # verdict. A "revise" verdict flags the card for the human
         # instead of letting it through to approval.

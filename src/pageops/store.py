@@ -18,7 +18,7 @@ DATASETS: dict[str, list[str]] = {
     "brand_voice": ["key", "value"],
     "plan": [
         "id", "date", "platform", "topic", "angle", "format", "status", "brief",
-        "draft", "check_status", "buffer_id",
+        "draft", "check_status", "visual", "buffer_id",
     ],
     "metrics": ["date", "platform", "post_id", "reach", "engagement", "clicks", "notes"],
 }
@@ -65,6 +65,13 @@ class Store:
             if not path.exists():
                 with path.open("w", newline="", encoding="utf-8") as fh:
                     csv.DictWriter(fh, fieldnames=fields).writeheader()
+            else:
+                # Migrate an older file whose header predates a new
+                # field: rewrite it on the current schema, keeping rows.
+                with path.open(newline="", encoding="utf-8") as fh:
+                    header = next(csv.reader(fh), [])
+                if header != fields:
+                    self.write_dataset(name, self.read_dataset(name))
         # Seed the brand voice once, only if it is still empty.
         if not self.read_dataset("brand_voice"):
             for key, value in BRAND_VOICE_SEED.items():
