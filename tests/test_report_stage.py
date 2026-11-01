@@ -116,3 +116,55 @@ def test_dashboard_link_action_joins_the_post(tmp_path):
         assert post({"id": waiting["id"], "action": "link", "post_id": "fb-9"}) == 400
     finally:
         server.shutdown()
+
+
+
+def test_linked_but_unmeasured_row_stays_scheduled(tmp_path):
+    store = Store(tmp_path)
+    import_metrics(store, [METRIC])
+    unmeasured = store.add_plan_row(
+        {"topic": "U", "status": "scheduled", "buffer_id": "dry-run-11"}
+    )
+    link_post(store, unmeasured["id"], "fb-unmeasured")
+    report_week(store, client=MockClient())
+    rows = {r["id"]: r for r in store.read_dataset("plan")}
+    assert rows[unmeasured["id"]]["status"] == "scheduled"
+
+
+class RogueClient(MockClient):
+    def narrate(self, stats, brand_voice):
+        return "reach exploded to 9999 overnight, a miracle"
+
+
+def test_invented_figures_drop_the_read_line(tmp_path):
+    store = Store(tmp_path)
+    import_metrics(store, [METRIC])
+    report = build_report(store, client=RogueClient())
+    assert "Read:" not in report["narrative"]
+    assert "9999" not in report["narrative"]
+
+
+def test_dashboard_run_report_records_and_displays(tmp_path):
+    import threading
+    import urllib.request
+
+    from pageops.dashboard import serve
+
+    store = Store(tmp_path)
+    import_metrics(store, [METRIC])
+    live = store.add_plan_row({"topic": "T2", "status": "scheduled", "buffer_id": "dry-run-9"})
+    link_post(store, live["id"], "fb-123")
+    server = serve(store, port=0)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        req = urllib.request.Request(base + "/report", data=b"", method="POST")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            assert resp.status == 200
+        rows = {r["id"]: r for r in store.read_dataset("plan")}
+        assert rows[live["id"]]["status"] == "reported"
+        with urllib.request.urlopen(base + "/", timeout=5) as resp:
+            board = resp.read().decode()
+        assert "Read:" in board  # the recorded narrative is displayed
+    finally:
+        server.shutdown()
