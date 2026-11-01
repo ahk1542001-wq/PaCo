@@ -1,6 +1,7 @@
 # PageOps Agent — Architecture
 
-PageOps runs a business page's weekly content operation end to end:
+PageOps Agent is a digital marketing and content creation agent. It
+runs a business page's weekly content operation end to end:
 one brief in, a week of checked and approved posts out, with a human
 approval gate that the code itself enforces. The demo brand is FYF AI.
 

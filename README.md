@@ -1,6 +1,7 @@
 # PageOps Agent
 
-PageOps Agent runs a social-media business page's weekly content
+**PageOps Agent is a digital marketing and content creation agent.** It
+runs a social-media business page's weekly content
 operation end to end — brief, trend research, content plan, on-brand
 drafts with rule checks, human approval, scheduling, performance
 report — from a single web dashboard. A human approves every post
