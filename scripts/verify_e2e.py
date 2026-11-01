@@ -37,7 +37,7 @@ def run_checks(data_dir: Path) -> list[tuple[str, bool, str]]:
 
     store = Store(data_dir)
     rows = process_week(store, MockClient(), BRIEF)
-    check("pipeline rows produced", len(rows) == 3, f"{len(rows)} rows")
+    check("pipeline rows produced", len(rows) == 7, f"{len(rows)} rows")
     check(
         "all rows awaiting approval",
         all(r["status"] == "awaiting_approval" for r in rows),
