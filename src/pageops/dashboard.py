@@ -88,10 +88,17 @@ def _actions(row: dict[str, str]) -> str:
         )
     if status == "awaiting_approval":
         draft_text = html.escape(row.get("draft", ""))
+        # Approve and Reject are SEPARATE forms on purpose: with both
+        # buttons in one form, pressing Enter in the reason input
+        # submits via the first button and approves by accident
+        # (Standards review of PR #5). The reason lives with Reject.
         return (
             '<form method="post" action="/action" class="actions">'
             f'<input type="hidden" name="id" value="{item_id}">'
             '<button name="action" value="approve" type="submit">Approve</button>'
+            "</form>"
+            '<form method="post" action="/action" class="actions">'
+            f'<input type="hidden" name="id" value="{item_id}">'
             '<input name="reason" placeholder="Rejection reason (kept on the card)">'
             '<button name="action" value="reject" type="submit">Reject</button>'
             "</form>"
@@ -149,6 +156,8 @@ def _card(row: dict[str, str]) -> str:
         extras += f'<div class="meta checks">{checks}</div>'
     if row.get("buffer_id"):
         extras += f'<div class="meta">Queue: {html.escape(row["buffer_id"])}</div>'
+    if row.get("brief_check"):
+        extras += f'<div class="meta">Brief check: {html.escape(row["brief_check"])}</div>'
     if row.get("reject_reason"):
         extras += f'<div class="meta">Rejected: {html.escape(row["reject_reason"])}</div>'
     return (
@@ -183,11 +192,20 @@ def render_board(store: Store) -> str:
 
     services = "".join(f"<li>{html.escape(s)}</li>" for s in brand["services"])
     rules = "".join(f"<li>{html.escape(r)}</li>" for r in brand["rules"])
+    raw_brand = {r["key"]: r["value"] for r in store.read_dataset("brand_voice")}
+    edit_forms = "".join(
+        '<form method="post" action="/brand" class="brandedit">'
+        f'<label>{html.escape(k)}</label>'
+        f'<input type="hidden" name="key" value="{html.escape(k)}">'
+        f'<input name="value" value="{html.escape(v)}">'
+        '<button type="submit">Save</button></form>'
+        for k, v in raw_brand.items()
+    )
     brand_panel = (
         '<section class="panel"><h2>Brand voice</h2>'
         f"<div>Audience: {html.escape(brand['audience'])}</div>"
         f"<div>Tone: {html.escape(brand['tone'])}</div>"
-        f"<ul>{services}</ul><ul>{rules}</ul></section>"
+        f"<ul>{services}</ul><ul>{rules}</ul>{edit_forms}</section>"
     )
 
     metrics_panel = ""
@@ -224,8 +242,8 @@ def render_board(store: Store) -> str:
     return (
         "<!DOCTYPE html><html><head><meta charset='utf-8'>"
         '<meta http-equiv="refresh" content="15">'
-        f"<title>{brand_name} — PageOps board</title><style>{_CSS}</style></head><body>"
-        f"<header><h1>{brand_name} — content pipeline</h1>"
+        f"<title>{brand_name} - PageOps board</title><style>{_CSS}</style></head><body>"
+        f"<header><h1>{brand_name} - content pipeline</h1>"
         "<p>PageOps Agent, a digital marketing and content creation agent: brief, plan, checks, approvals, scheduling, report.</p></header>"
         f"{brief_form}"
         f"<div class='board'>{''.join(columns_html)}</div>"
@@ -256,11 +274,16 @@ def make_handler(store: Store):
                 if self.path == "/brief":
                     from .pipeline import intake_brief
 
-                    parts = [
-                        form.get(k, "").strip()
+                    fields = {
+                        k: form.get(k, "").strip()
                         for k in ("goal", "offer", "dates", "notes")
-                    ]
-                    intake_brief(store, " | ".join(p for p in parts if p))
+                    }
+                    parts = [v for v in fields.values() if v]
+                    intake_brief(store, " | ".join(parts), fields=fields)
+                elif self.path == "/brand":
+                    from .pipeline import update_brand_voice
+
+                    update_brand_voice(store, form.get("key", ""), form.get("value", ""))
                 elif self.path == "/action":
                     item_id = form.get("id", "")
                     action = form.get("action", "")
@@ -269,16 +292,30 @@ def make_handler(store: Store):
                         from .pipeline import run_brief
                         from .rss import fetch_feeds
 
+                        from .model_client import get_judge_client
+
                         client = get_client()
                         # Live mode researches the live feeds; mock
                         # mode stays offline and hermetic.
                         fetcher = None if isinstance(client, MockClient) else fetch_feeds
-                        run_brief(store, client, item_id, trends_fetcher=fetcher)
+                        run_brief(
+                            store,
+                            client,
+                            item_id,
+                            trends_fetcher=fetcher,
+                            judge=get_judge_client(),
+                        )
                     elif action == "edit":
-                        from .model_client import get_client
+                        from .model_client import get_client, get_judge_client
                         from .pipeline import edit_item
 
-                        edit_item(store, get_client(), item_id, form.get("draft", ""))
+                        edit_item(
+                            store,
+                            get_client(),
+                            item_id,
+                            form.get("draft", ""),
+                            judge=get_judge_client(),
+                        )
                     elif action == "approve":
                         from .pipeline import approve_item
 
