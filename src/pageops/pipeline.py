@@ -216,9 +216,20 @@ def _review_tail(
         # judgement verdict. A "revise" verdict flags the card for
         # the human instead of letting it through to approval.
         verdict_client = judge if judge is not None else client
-        verdict = verdict_client.verdict(
-            {"text": text, "platform": item.get("platform", "")}, summary
-        )
+        try:
+            verdict = verdict_client.verdict(
+                {"text": text, "platform": item.get("platform", "")}, summary
+            )
+        except Exception as exc:
+            if verdict_client is client:
+                raise
+            # A failing judge must not strand the run: fall back to
+            # the drafting client's verdict and SAY SO in the
+            # evidence, so the degradation is visible on the card.
+            verdict = client.verdict(
+                {"text": text, "platform": item.get("platform", "")}, summary
+            )
+            summary += f"\n[JUDGE FALLBACK] judge error ({exc}); verdict from the drafting client"
         reasons = "; ".join(verdict.get("reasons", []))
         summary += f"\n[MODEL VERDICT] {verdict.get('verdict', '')} - {reasons}"
         status = "awaiting_approval" if verdict.get("verdict") == "pass" else "checked"
