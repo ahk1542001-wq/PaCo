@@ -2,9 +2,9 @@
 
 **PageOps Agent is a digital marketing and content creation agent.** It
 runs a social-media business page's weekly content
-operation end to end — brief, trend research, content plan, on-brand
+operation end to end - brief, trend research, content plan, on-brand
 drafts with rule checks, human approval, scheduling, performance
-report — from a single web dashboard. A human approves every post
+report - from a single web dashboard. A human approves every post
 before anything can be scheduled. The demo brand is **FYF AI**, an
 AI-automation services page for Myanmar and Thai SME owners.
 
@@ -17,22 +17,22 @@ open weights when wanted.
 
 ## Pipeline
 
-1. **Brief** — a short form on the dashboard (goal, offer, dates).
-2. **Trend research** — curated RSS/news feeds plus the brand's own
+1. **Brief** - a short form on the dashboard (goal, offer, dates).
+2. **Trend research** - curated RSS/news feeds plus the brand's own
    past performance; every trend item keeps its source link.
-3. **Content plan** — a 7-day plan written against the brand-voice
+3. **Content plan** - a 7-day plan written against the brand-voice
    profile, shown as cards on a kanban board.
-4. **Drafts with brand-rule checks** — every draft is checked by a
+4. **Drafts with brand-rule checks** - every draft is checked by a
    deterministic rule checker (banned phrases, CTA present, platform
    length caps, required hashtags). Each verdict quotes the draft's
    own lines as evidence; nothing rests on the model's word alone.
    A failing draft is revised once, then flagged for the human.
-5. **Approval** — Approve / Reject buttons on the board. The
+5. **Approval** - Approve / Reject buttons on the board. The
    scheduling layer itself refuses anything that is not approved;
    that gate is proven by an automated test.
-6. **Scheduling** — approved posts go to the Buffer queue (dry-run
+6. **Scheduling** - approved posts go to the Buffer queue (dry-run
    mode until the live key is wired); queue IDs show on the cards.
-7. **Performance report** — metrics maths in code, and a report in
+7. **Performance report** - metrics maths in code, and a report in
    goal, strategy, execution, result shape that cites only numbers
    present in the metrics store.
 
