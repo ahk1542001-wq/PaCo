@@ -3,14 +3,21 @@
 Pure code, no model calls. Every rule returns pass/fail plus the offending
 text quoted as evidence, so a human (or a judge) can verify each verdict
 without trusting the model.
+
+The rules themselves live in the brand DATA (the brand voice store):
+banned phrases, CTA markers and required hashtags are read from the
+brand dict on every call, so editing the brand data changes the
+verdicts. The lists below are fallback defaults for stores that
+predate those data keys. Platform length caps stay in code: they
+are platform facts, not brand rules.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-# Claims we never publish, in any wording close to these.
-BANNED_PHRASES: list[str] = [
+# Fallback defaults, used only when the brand data has no list.
+DEFAULT_BANNED_PHRASES: list[str] = [
     "guaranteed income",
     "guarantee income",
     "get rich",
@@ -28,8 +35,8 @@ PLATFORM_LIMITS: dict[str, int] = {
     "linkedin": 3000,
 }
 
-# Phrases that count as a clear call to action.
-CTA_MARKERS: list[str] = [
+# Fallback defaults, used only when the brand data has no list.
+DEFAULT_CTA_MARKERS: list[str] = [
     "message us",
     "send us a message",
     "dm us",
@@ -79,8 +86,10 @@ def check_draft(text: str, platform: str, brand_voice: dict) -> CheckResult:
     lowered = text.lower()
     results: list[RuleResult] = []
 
-    # Rule 1: no banned phrases. Evidence quotes the exact phrase found.
-    found = [p for p in BANNED_PHRASES if p in lowered]
+    # Rule 1: no banned phrases (from the brand data). Evidence
+    # quotes the exact phrase found.
+    banned = (brand_voice or {}).get("banned_phrases") or DEFAULT_BANNED_PHRASES
+    found = [p for p in banned if p.lower() in lowered]
     results.append(
         RuleResult(
             rule="banned_phrases",
@@ -89,8 +98,9 @@ def check_draft(text: str, platform: str, brand_voice: dict) -> CheckResult:
         )
     )
 
-    # Rule 2: a clear CTA must be present.
-    cta_found = next((m for m in CTA_MARKERS if m in lowered), None)
+    # Rule 2: a clear CTA must be present (markers from the brand data).
+    markers = (brand_voice or {}).get("cta_markers") or DEFAULT_CTA_MARKERS
+    cta_found = next((m for m in markers if m.lower() in lowered), None)
     results.append(
         RuleResult(
             rule="cta_present",
@@ -123,18 +133,19 @@ def check_draft(text: str, platform: str, brand_voice: dict) -> CheckResult:
             )
         )
 
-    # Rule 4: at least one required brand hashtag must appear.
+    # Rule 4: ALL required brand hashtags must appear; the evidence
+    # names the ones that are missing.
     required = brand_voice.get("required_hashtags", []) if brand_voice else []
     if required:
-        tag_found = next((h for h in required if h.lower() in lowered), None)
+        missing = [h for h in required if h.lower() not in lowered]
         results.append(
             RuleResult(
                 rule="required_hashtag",
-                passed=tag_found is not None,
+                passed=not missing,
                 evidence=(
-                    f"required hashtag present: {tag_found}"
-                    if tag_found
-                    else f"none of the required hashtags {required} in draft starting {_quote(text, 60)}"
+                    f"all required hashtags present: {', '.join(required)}"
+                    if not missing
+                    else f"missing required hashtags: {', '.join(missing)}"
                 ),
             )
         )
