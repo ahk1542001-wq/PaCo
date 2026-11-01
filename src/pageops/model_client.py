@@ -65,8 +65,11 @@ class MetaModelClient:
         # to muse-spark-1.3 for cheap development iterations.
         self.main_model = os.environ.get("PAGEOPS_MAIN_MODEL") or MODEL_WONDER
         self.verdict_model = MODEL_WONDER
+        # Set by the Baseten factory: verdict-style calls measure best
+        # at LOW reasoning effort. None means the parameter is not sent.
+        self.reasoning_effort: str | None = None
 
-    def chat(self, messages: list[dict], model: str = MODEL_SPARK, **kwargs) -> dict:
+    def chat(self, messages: list[dict], model: str = MODEL_WONDER, **kwargs) -> dict:
         if not self.api_key:
             raise RuntimeError("MODEL_API_KEY is not set; cannot call the Meta Model API.")
         import httpx  # imported lazily so mock mode never needs the package
@@ -77,7 +80,12 @@ class MetaModelClient:
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
             },
-            json={"model": model, "messages": messages, **kwargs},
+            json={
+                "model": model,
+                "messages": messages,
+                **({"reasoning_effort": self.reasoning_effort} if self.reasoning_effort else {}),
+                **kwargs,
+            },
             timeout=120.0,
         )
         response.raise_for_status()
@@ -124,6 +132,27 @@ class MetaModelClient:
             {"draft": draft, "check_summary": check_summary},
             self.verdict_model,
         )
+
+    def narrate(self, stats: dict, brand_voice: dict) -> str:
+        """Interpret computed stats in prose. Figures come from stats only."""
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are PageOps Agent's performance analyst. Write two or "
+                    "three plain sentences interpreting the numbers you are "
+                    "given. Never invent a figure that is not in the input."
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {"stats": stats, "brand": brand_voice.get("brand_name", "")}
+                ),
+            },
+        ]
+        result = self.chat(messages, model=self.main_model)
+        return result["choices"][0]["message"]["content"].strip()
 
 
 class MockClient:
@@ -195,13 +224,24 @@ class MockClient:
         text = (
             f"{topic}. We built this for SME owners who sell through their page and "
             "cannot sit in the inbox all day. Message us to get started, and we will "
-            "map the first step with you. #FYFAI #AIAutomation"
+            "map the first step with you. #FYFAI #AIAutomation #SME"
         )
         return {
             "platform": plan_item.get("platform", "facebook"),
             "text": text,
-            "hashtags": ["#FYFAI", "#AIAutomation"],
+            "hashtags": ["#FYFAI", "#AIAutomation", "#SME"],
         }
+
+    def narrate(self, stats: dict, brand_voice: dict) -> str:
+        totals = stats.get("totals", {})
+        best = stats.get("best_post") or {}
+        return (
+            f"across {totals.get('posts', 0)} tracked posts the page earned "
+            f"{totals.get('reach', 0)} reach and {totals.get('engagement', 0)} "
+            f"engagement; the strongest post was {best.get('post_id', 'n/a')} "
+            f"with {best.get('engagement', 0)} engagement, so its angle leads "
+            "the next plan."
+        )
 
     def verdict(self, draft: dict, check_summary: str) -> dict:
         passed = "[FAIL]" not in check_summary
@@ -234,4 +274,16 @@ def get_baseten_client(api_key: str | None = None, usage_log: Path | str | None 
     client = MetaModelClient(api_key=key, usage_log=usage_log, base_url=BASETEN_BASE_URL)
     client.main_model = MODEL_SPARK_OPEN
     client.verdict_model = MODEL_SPARK_OPEN
+    client.reasoning_effort = "low"
     return client
+
+
+def get_judge_client():
+    """The decision/judge model: Muse Spark Open via Baseten.
+
+    A second model judging the main model's drafts (the owner's
+    Model map designation). Returns None when no Baseten key is
+    configured; callers then fall back to the drafting client's
+    verdict, so the pipeline never depends on the judge existing.
+    """
+    return get_baseten_client()
