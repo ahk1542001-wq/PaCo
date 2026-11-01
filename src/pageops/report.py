@@ -12,6 +12,29 @@ from .metrics import compute_metrics
 from .store import Store
 
 
+def _figures_grounded(text: str, stats: dict) -> bool:
+    """True when every number in the prose exists in the stats."""
+    import re
+
+    allowed = set()
+    for value in stats.get("totals", {}).values():
+        allowed.add(int(value))
+    best = stats.get("best_post") or {}
+    for key in ("reach", "engagement", "clicks"):
+        if key in best:
+            allowed.add(int(best[key]))
+    # Post IDs are identifiers, not figures: strip them before the
+    # scan so an ID like fb-123 is never mistaken for a number.
+    scrubbed = text
+    post_ids = [stats.get("best_post", {}).get("post_id", "")]
+    post_ids += [p.get("post_id", "") for p in stats.get("posts", [])]
+    for pid in post_ids:
+        if pid:
+            scrubbed = scrubbed.replace(pid, "")
+    found = [int(n.replace(",", "")) for n in re.findall(r"\d[\d,]*", scrubbed)]
+    return all(n in allowed for n in found)
+
+
 def build_report(store: Store, goal: str = "", client=None) -> dict:
     """Return {stats, narrative} for the store's current metrics.
 
@@ -43,9 +66,12 @@ def build_report(store: Store, goal: str = "", client=None) -> dict:
     ]
     if client is not None and totals["posts"]:
         # The model reads ONLY the computed stats and writes the
-        # interpretation; every figure in its prose traces to the
-        # stats dict it was handed.
-        lines.append(f"Read: {client.narrate(stats, brand)}")
+        # interpretation. Its prose is then figure-checked in code:
+        # any number that is not in the stats drops the whole Read
+        # line, so an invented figure can never reach the report.
+        read = client.narrate(stats, brand)
+        if _figures_grounded(read, stats):
+            lines.append(f"Read: {read}")
     if best:
         lines.append(
             f"Best post: {best['post_id']} on {best['platform']} with "
