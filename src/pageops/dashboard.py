@@ -185,7 +185,11 @@ def render_board(store: Store) -> str:
 
     services = "".join(f"<li>{html.escape(s)}</li>" for s in brand["services"])
     rules = "".join(f"<li>{html.escape(r)}</li>" for r in brand["rules"])
+    from .pipeline import BRAND_KEYS
+
     raw_brand = {r["key"]: r["value"] for r in store.read_dataset("brand_voice")}
+    # Edit forms only for keys the pipeline will accept, so the
+    # render surface and the write surface cannot drift apart.
     edit_forms = "".join(
         '<form method="post" action="/brand" class="brandedit">'
         f'<label>{html.escape(k)}</label>'
@@ -193,6 +197,7 @@ def render_board(store: Store) -> str:
         f'<input name="value" value="{html.escape(v)}">'
         '<button type="submit">Save</button></form>'
         for k, v in raw_brand.items()
+        if k in BRAND_KEYS
     )
     brand_panel = (
         '<section class="panel"><h2>Brand voice</h2>'
@@ -265,11 +270,10 @@ def make_handler(store: Store):
             }
             try:
                 if self.path == "/brief":
-                    from .pipeline import intake_brief
+                    from .pipeline import BRIEF_FIELDS, intake_brief
 
                     fields = {
-                        k: form.get(k, "").strip()
-                        for k in ("goal", "offer", "dates", "notes")
+                        k: form.get(k, "").strip() for k in BRIEF_FIELDS
                     }
                     parts = [v for v in fields.values() if v]
                     intake_brief(store, " | ".join(parts), fields=fields)
