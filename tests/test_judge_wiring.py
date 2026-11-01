@@ -89,3 +89,37 @@ def test_judge_calls_send_low_reasoning_effort(monkeypatch):
     judge.verdict({"text": "x", "platform": "facebook"}, "summary")
     assert captured["json"]["reasoning_effort"] == "low"
     assert captured["json"]["model"] == MODEL_SPARK_OPEN
+
+
+
+class ExplodingJudge(MockClient):
+    def verdict(self, draft, check_summary):
+        raise RuntimeError("baseten timeout")
+
+
+def test_failing_judge_falls_back_visibly(tmp_path):
+    store = Store(tmp_path)
+    row = _planned_row(store)
+    updated = draft_and_check(store, MockClient(), row, judge=ExplodingJudge())
+    assert updated["status"] == "awaiting_approval"
+    assert "[JUDGE FALLBACK]" in updated["check_status"]
+    assert "[MODEL VERDICT] pass" in updated["check_status"]
+
+
+def test_edit_routes_its_verdict_to_the_judge(tmp_path):
+    from pageops.pipeline import edit_item
+
+    store = Store(tmp_path)
+    row = store.add_plan_row(
+        {"platform": "facebook", "topic": "T", "status": "checked", "draft": "Old. Message us."}
+    )
+    judge = SpyClient()
+    updated = edit_item(
+        store,
+        MockClient(),
+        row["id"],
+        "Edited and clean. Message us to get started. #FYFAI #AIAutomation #SME",
+        judge=judge,
+    )
+    assert judge.verdict_calls == 1
+    assert updated["status"] == "awaiting_approval"
