@@ -88,7 +88,13 @@ def check_draft(text: str, platform: str, brand_voice: dict) -> CheckResult:
 
     # Rule 1: no banned phrases (from the brand data). Evidence
     # quotes the exact phrase found.
-    banned = (brand_voice or {}).get("banned_phrases") or DEFAULT_BANNED_PHRASES
+    # Presence semantics: a brand dict that carries the key (even an
+    # empty list) is authoritative; the defaults protect brand dicts
+    # that predate the key. get_brand_voice omits blank keys, so a
+    # legacy store can never switch protection off by accident.
+    banned = (brand_voice or {}).get("banned_phrases")
+    if banned is None:
+        banned = DEFAULT_BANNED_PHRASES
     found = [p for p in banned if p.lower() in lowered]
     results.append(
         RuleResult(
@@ -99,7 +105,9 @@ def check_draft(text: str, platform: str, brand_voice: dict) -> CheckResult:
     )
 
     # Rule 2: a clear CTA must be present (markers from the brand data).
-    markers = (brand_voice or {}).get("cta_markers") or DEFAULT_CTA_MARKERS
+    markers = (brand_voice or {}).get("cta_markers")
+    if markers is None:
+        markers = DEFAULT_CTA_MARKERS
     cta_found = next((m for m in markers if m.lower() in lowered), None)
     results.append(
         RuleResult(
