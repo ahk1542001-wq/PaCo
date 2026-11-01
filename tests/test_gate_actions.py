@@ -173,3 +173,33 @@ def test_dashboard_reject_records_reason(tmp_path):
         assert reread["reject_reason"] == "Wrong offer"
     finally:
         server.shutdown()
+
+
+
+def test_approve_form_carries_no_reason_input(tmp_path):
+    # Standards review (PR #5): Enter in the reason field must never
+    # be able to submit an approval. The approve form stands alone.
+    from pageops.dashboard import render_board
+
+    store = Store(tmp_path)
+    store.add_plan_row({"topic": "T", "status": "awaiting_approval", "draft": "D"})
+    board = render_board(store)
+    approve_form = board.split('value="approve"')[0].rsplit("<form", 1)[-1]
+    assert 'name="reason"' not in approve_form
+
+
+def test_dashboard_happy_path_approve_then_schedule(tmp_path):
+    store = Store(tmp_path)
+    row = store.add_plan_row(
+        {"topic": "T", "status": "awaiting_approval", "draft": "Clean. Message us."}
+    )
+    server, base = _start(store)
+    try:
+        assert _post(base + "/action", {"id": row["id"], "action": "approve"}) == 200
+        assert store.read_dataset("plan")[0]["status"] == "approved"
+        assert _post(base + "/action", {"id": row["id"], "action": "schedule"}) == 200
+        final = store.read_dataset("plan")[0]
+        assert final["status"] == "scheduled"
+        assert final["buffer_id"] == f"dry-run-{row['id']}"
+    finally:
+        server.shutdown()
