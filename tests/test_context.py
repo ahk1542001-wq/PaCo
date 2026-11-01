@@ -65,7 +65,7 @@ def test_report_week_appends_history(tmp_path):
     )
     from pageops.pipeline import report_week
 
-    report_week(store, MockClient())
+    report_week(store, client=MockClient())
     assert latest_analyst_summary(store) != ""
 
 
