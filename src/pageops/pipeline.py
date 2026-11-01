@@ -15,6 +15,10 @@ skills and its own tools (full spec: ARCHITECTURE.md):
 - Distribution Coordinator (scheduler.schedule_item): approved -> queue ID
 - Performance Analyst (report.build_report): metrics -> report
 
+Layering rule: roles never call each other. Every handoff between
+roles flows through this orchestrator and the store, and stages run
+in sequence, step to step.
+
 Every stage writes its state to the store, so the dashboard board is a
 live view of real pipeline state. Model calls go through the client
 interface (mock by default); the brand-rule checker is deterministic

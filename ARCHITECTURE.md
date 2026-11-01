@@ -17,6 +17,15 @@ read, understood, then implemented in our own code), and its own
 tools. The human owner sits above the CEO: the approval gate is the
 owner's click, and no role can cross it.
 
+**Layering.** Three layers — CEO → roles → pipeline stages — and
+only two kinds of connection: the CEO calls a role, and a stage hands
+its output to the next stage in sequence (through the store). Roles
+never call each other; there is no peer-to-peer wiring and no
+cross-stage link. Every connection in the system is a named handoff
+in the table above. In the code this is literal: `pipeline.py` is the
+only place roles are invoked from, and the store is the medium every
+handoff travels through.
+
 **CEO — Orchestrator** (`pipeline.py`, code). JD: runs the week,
 briefs each role in order, routes pass / revise-once / flag, holds
 items at the gate, assembles the final report view. Stops: cannot
