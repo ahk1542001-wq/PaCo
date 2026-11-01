@@ -1,0 +1,8 @@
+# Trend and marketing feeds for PageOps Agent (one URL per line).
+# AI industry news
+https://openai.com/news/rss.xml
+https://blog.google/rss/
+# Social media marketing practice
+https://blog.hootsuite.com/feed/
+https://www.socialmediatoday.com/feeds/news/
+https://www.marketingdive.com/feeds/news/

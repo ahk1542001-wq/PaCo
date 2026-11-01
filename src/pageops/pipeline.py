@@ -1,0 +1,97 @@
+"""Pipeline for PageOps Agent: brief -> research -> plan -> draft -> check.
+
+Every stage writes its state to the store, so the dashboard board is a
+live view of real pipeline state. Model calls go through the client
+interface (mock by default); the brand-rule checker is deterministic
+code. A draft that fails the checker is revised once, then flagged.
+"""
+
+from __future__ import annotations
+
+from .checker import check_draft
+from .store import Store
+
+
+def intake_brief(store: Store, brief_text: str) -> dict:
+    """Record an incoming brief as a plan row in the Brief column."""
+    return store.add_plan_row({"status": "brief_received", "brief": brief_text})
+
+
+def fetch_trends(feeds_file=None, fetcher=None, limit: int = 5) -> list[dict]:
+    """Trend items with source links. Network only via the real fetcher."""
+    if fetcher is None:
+        from .rss import fetch_feeds
+
+        fetcher = fetch_feeds
+    return fetcher(feeds_file)[:limit]
+
+
+def generate_week(store: Store, client, brief_text: str) -> list[dict]:
+    """Generate the content plan for one brief and store each post."""
+    brand = store.get_brand_voice()
+    plan = client.generate_plan(brief_text, brand)
+    rows = []
+    for post in plan.get("posts", []):
+        rows.append(
+            store.add_plan_row(
+                {
+                    "date": post.get("day", ""),
+                    "platform": post.get("platform", ""),
+                    "topic": post.get("topic", ""),
+                    "angle": post.get("angle", ""),
+                    "format": post.get("format", ""),
+                    "status": "planned",
+                    "brief": brief_text,
+                }
+            )
+        )
+    return rows
+
+
+def _full_text(draft: dict) -> str:
+    text = draft.get("text", "")
+    tags = [t for t in draft.get("hashtags", []) if t and t not in text]
+    if tags:
+        text = (text + " " + " ".join(tags)).strip()
+    return text
+
+
+def draft_and_check(store: Store, client, row: dict) -> dict:
+    """Draft one plan item, run the checker, revise once on failure.
+
+    Ends with status awaiting_approval (checks passed) or checked
+    (still failing after the single revision, flagged for the human).
+    The checker's summary is stored on the row as quoted evidence.
+    """
+    brand = store.get_brand_voice()
+    item = dict(row)
+    draft = client.generate_draft(item, brand)
+    text = _full_text(draft)
+    result = check_draft(text, item.get("platform", ""), brand)
+    if not result.passed:
+        item["revision_feedback"] = result.summary()
+        draft = client.generate_draft(item, brand)
+        text = _full_text(draft)
+        result = check_draft(text, item.get("platform", ""), brand)
+    summary = result.summary()
+    status = "checked"
+    if result.passed:
+        # Deterministic rules passed; Muse Wonder gives the judgement
+        # verdict. A "revise" verdict flags the card for the human
+        # instead of letting it through to approval.
+        verdict = client.verdict({"text": text, "platform": item.get("platform", "")}, summary)
+        reasons = "; ".join(verdict.get("reasons", []))
+        summary += f"\n[MODEL VERDICT] {verdict.get('verdict', '')} - {reasons}"
+        status = "awaiting_approval" if verdict.get("verdict") == "pass" else "checked"
+    return store.update_row(
+        "plan",
+        row["id"],
+        {"draft": text, "check_status": summary, "status": status},
+    )
+
+
+def process_week(store: Store, client, brief_text: str) -> list[dict]:
+    """Full mock-safe run: brief, plan, then draft + check for each post."""
+    intake_brief(store, brief_text)
+    rows = generate_week(store, client, brief_text)
+    return [draft_and_check(store, client, row) for row in rows]
