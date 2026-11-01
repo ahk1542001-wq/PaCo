@@ -84,8 +84,8 @@ def generate_week(
     """Generate the content plan for one brief and store each post.
 
     Research first: current trends (already fetched by the
-    orchestrator) and the long-term loop — the Analyst's latest
-    history summary as context — both reach the planner, so this
+    orchestrator) and the long-term loop - the Analyst's latest
+    history summary as context - both reach the planner, so this
     plan is built on what is happening and what worked before.
     """
     from .context import latest_analyst_summary
