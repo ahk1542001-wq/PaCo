@@ -114,8 +114,7 @@ flowchart LR
 | Route | Models | Used for |
 |---|---|---|
 | Meta Model API (`api.meta.ai`) | Muse Wonder 1.0 (main), Muse Spark 1.3 (utility) | Plan, drafts, report narrative. `PAGEOPS_MAIN_MODEL` switches the main model for cheap dev iterations. |
-| Baseten (`inference.baseten.co`) | Muse Spark Open (open weight) | The judge: brand verdicts and routing decisions at LOW reasoning effort, so a second model judges the main model's drafts. Without a Baseten key, verdicts fall back to the main client. |
-| Baseten (`inference.baseten.co`) | Muse Spark Open (`meta-models/muse-spark-open-1026`) | Optional open-weights route. The same pipeline runs on Meta's open weights; used for the open-weight comparison evidence. Enabled by `BASETEN_API_KEY`. |
+| Baseten (`inference.baseten.co`) | Muse Spark Open (`meta-models/muse-spark-open-1026`, open weight) | The judge: brand verdicts at LOW reasoning effort, so a second model judges the main model's drafts (the verdict drives the deterministic pass / revise / flag routing in code). The same route also runs the pipeline on open weights for the open-weight comparison evidence. Enabled by `BASETEN_API_KEY`; without a key, verdicts fall back to the main client. |
 | Mock | Canned outputs | Tests and offline development. The default mode; zero cost. |
 
 ## Trust and safety design
