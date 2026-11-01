@@ -265,10 +265,15 @@ def make_handler(store: Store):
                     item_id = form.get("id", "")
                     action = form.get("action", "")
                     if action == "run":
-                        from .model_client import get_client
+                        from .model_client import MockClient, get_client
                         from .pipeline import run_brief
+                        from .rss import fetch_feeds
 
-                        run_brief(store, get_client(), item_id)
+                        client = get_client()
+                        # Live mode researches the live feeds; mock
+                        # mode stays offline and hermetic.
+                        fetcher = None if isinstance(client, MockClient) else fetch_feeds
+                        run_brief(store, client, item_id, trends_fetcher=fetcher)
                     elif action == "edit":
                         from .model_client import get_client
                         from .pipeline import edit_item
