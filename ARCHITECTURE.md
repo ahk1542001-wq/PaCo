@@ -138,6 +138,22 @@ flowchart LR
 
 ## Data
 
+Context architecture: roles never share context by chatting. There
+is one store, in three layers. The **permanent layer** (brand voice
+rows + brand assets: colors, logo, fonts, templates) is read-only
+for all roles and updated only from the Branding side. The **job
+layer** (brief, plan rows with their status fields, drafts, check
+evidence, approval states, queue IDs) is owned by the CEO layer;
+the dashboard renders exactly this layer, so the kanban statuses
+are the shared context. The **private layer** is per-role working
+memory (the Strategist's trend notes, the Analyst's performance
+history). Handoffs are structured store objects moving through the
+status machine, never free-text messages; the orchestrator routes
+each role only the slice its JD needs. The Analyst's reports
+persist and feed the Strategist's next plan. Every store write is
+appended to a write log (who, when, field, old → new), which
+doubles as the demo's audit evidence.
+
 - Brand voice, plan and metrics live in the CSV store; the Google
   Sheet is a read-friendly mirror, never the source of truth.
 - FYF AI's real baseline metrics (last 90 days to 31 Oct 2026: 15
