@@ -13,7 +13,7 @@ One page. Produced by the M1 alignment pass (Pocock `grill-with-docs`) over the 
 - **Store:** local CSV mirroring the Google Sheets schema (Brand Voice / Plan / Metrics), one-way push to Sheets. The dashboard reads the store; no separate state.
 - **Scheduler gate:** `scheduler.py` refuses, in code, anything not in `approved` status. Buffer runs dry-run until a live key exists; dry-run queue IDs are labelled as such everywhere.
 - **Cost policy:** usage is logged per run; flag at ~50% and ~80% of the $150 Meta credit. No paid step beyond the credit without the owner's say.
-- **Gate enforcement:** every change lands as a branch + pull request; GitHub Actions runs the full test suite on each PR; branch protection on `main` requires green checks; CodeRabbit reviews each PR on two axes (standards, then spec). Merge = the change's FINAL.
+- **Gate enforcement:** every change lands as a branch + pull request; GitHub Actions runs the full test suite on each PR; branch protection on `main` requires green checks. The reviewing Muse (main chat) then runs the two-axis review (standards, then spec, the Matt Pocock way) and merges if it passes; a failed review returns with a fix list and the step is re-pushed and re-reviewed. **A step is FINAL only after that review + merge — never on the builder's own merge.** CodeRabbit is configured as an additional automated reviewer once its app is installed.
 
 ## Open (not silently resolved)
 
