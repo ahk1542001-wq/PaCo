@@ -89,11 +89,21 @@ class Store:
             for row in rows:
                 writer.writerow({f: row.get(f, "") for f in fields})
 
+    def _log_write(self, dataset: str, row_id: str, fields: list[str]) -> None:
+        """Append one line to the store write log (the audit trail)."""
+        from datetime import datetime, timezone
+
+        stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        line = f"{stamp} dataset={dataset} id={row_id} fields={','.join(fields)}\n"
+        with (self.data_dir / "writes.log").open("a", encoding="utf-8") as fh:
+            fh.write(line)
+
     def append_row(self, dataset: str, row: dict[str, str]) -> dict[str, str]:
         fields = DATASETS[dataset]
         clean = {f: str(row.get(f, "")) for f in fields}
         with self._path(dataset).open("a", newline="", encoding="utf-8") as fh:
             csv.DictWriter(fh, fieldnames=fields).writerow(clean)
+        self._log_write(dataset, clean.get("id", "-"), [f for f in fields if clean.get(f)])
         return clean
 
     def update_row(self, dataset: str, row_id: str, updates: dict[str, str]) -> dict[str, str]:
@@ -103,6 +113,7 @@ class Store:
             if row.get("id") == str(row_id):
                 row.update({k: str(v) for k, v in updates.items()})
                 self.write_dataset(dataset, rows)
+                self._log_write(dataset, str(row_id), sorted(updates))
                 return row
         raise KeyError(f"No row with id {row_id} in {dataset}")
 
