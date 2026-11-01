@@ -20,3 +20,5 @@ One page. Produced by the M1 alignment pass (Pocock `grill-with-docs`) over the 
 - **Buffer live vs Postiz fallback:** needs the owner's Buffer account + API key (Nov 3 step). Until then, dry-run stands and is labelled as such.
 - **CodeRabbit app installation:** the config file ships with the repo; if the GitHub App is not installed on the repo, the first PR will show no review — that gap gets reported, not papered over.
 - **Graphic Designer role:** the owner's design session sketched one in Department 1; the pipeline has no visual-production stage today. Adding it means a new stage + minitask. Owner's call.
+
+<!-- gate proof: throwaway PR for M1, 2026-11-02 -->
