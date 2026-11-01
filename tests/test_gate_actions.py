@@ -96,7 +96,37 @@ def test_draft_and_check_passes_through_drafted(tmp_path):
     row = _row(store, "planned", topic="Spy topic")
     draft_and_check(store, MockClient(), row)
     assert "drafted" in seen
+    assert "visual_ready" in seen
     assert seen[-1] == "awaiting_approval"
+
+
+def test_reject_without_reason_is_refused(tmp_path):
+    store = Store(tmp_path)
+    row = _row(store, "awaiting_approval", draft="Good draft")
+    with pytest.raises(ValueError):
+        reject_item(store, row["id"], reason="  ")
+
+
+def test_checked_card_offers_edit_and_reject_on_the_board(tmp_path):
+    from pageops.dashboard import render_board
+
+    store = Store(tmp_path)
+    _row(store, "checked", draft="Flagged draft", check_status="[FAIL] cta")
+    board = render_board(store)
+    assert "Save edit + re-check" in board
+    assert 'value="reject"' in board
+    assert 'value="approve"' not in board
+
+
+def test_run_brief_through_the_orchestrator(tmp_path):
+    from pageops.pipeline import intake_brief, run_brief
+
+    store = Store(tmp_path)
+    brief = intake_brief(store, "Promote the chatbot offer")
+    drafted = run_brief(store, MockClient(), brief["id"])
+    assert drafted and all(r["status"] == "awaiting_approval" for r in drafted)
+    reread = [r for r in store.read_dataset("plan") if r["id"] == brief["id"]][0]
+    assert reread["status"] == "planned"
 
 
 def _start(store):
