@@ -18,7 +18,7 @@ DATASETS: dict[str, list[str]] = {
     "brand_voice": ["key", "value"],
     "plan": [
         "id", "date", "platform", "topic", "angle", "format", "status", "brief",
-        "draft", "check_status", "visual", "reject_reason", "buffer_id",
+        "draft", "check_status", "visual", "reject_reason", "post_id", "buffer_id",
     ],
     "metrics": ["date", "platform", "post_id", "reach", "engagement", "clicks", "notes"],
 }
@@ -39,6 +39,14 @@ BRAND_VOICE_SEED: dict[str, str] = {
         "No real person's name anywhere"
     ),
     "required_hashtags": "#FYFAI; #AIAutomation; #SME",
+    "banned_phrases": (
+        "guaranteed income; guarantee income; get rich; get-rich; "
+        "100% profit; make money fast; risk-free income"
+    ),
+    "cta_markers": (
+        "message us; send us a message; dm us; contact us; get started; "
+        "book a; book your; learn more; sign up; call us; chat with us"
+    ),
 }
 
 
@@ -130,6 +138,12 @@ class Store:
             "rules": [r.strip() for r in raw.get("rules", "").split(";") if r.strip()],
             "required_hashtags": [
                 h.strip() for h in raw.get("required_hashtags", "").split(";") if h.strip()
+            ],
+            "banned_phrases": [
+                p.strip() for p in raw.get("banned_phrases", "").split(";") if p.strip()
+            ],
+            "cta_markers": [
+                m.strip() for m in raw.get("cta_markers", "").split(";") if m.strip()
             ],
         }
 
