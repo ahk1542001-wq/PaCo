@@ -12,8 +12,12 @@ from .metrics import compute_metrics
 from .store import Store
 
 
-def build_report(store: Store, goal: str = "") -> dict:
-    """Return {stats, narrative} for the store's current metrics."""
+def build_report(store: Store, goal: str = "", client=None) -> dict:
+    """Return {stats, narrative} for the store's current metrics.
+
+    Pure: no writes. Recording the report (history, reported
+    transitions) is pipeline.report_week, the Analyst's stage act.
+    """
     brand = store.get_brand_voice()
     stats = compute_metrics(store.read_dataset("metrics"))
     totals = stats["totals"]
@@ -37,6 +41,11 @@ def build_report(store: Store, goal: str = "") -> dict:
             f"{totals['engagement']}, total clicks {totals['clicks']}."
         ),
     ]
+    if client is not None and totals["posts"]:
+        # The model reads ONLY the computed stats and writes the
+        # interpretation; every figure in its prose traces to the
+        # stats dict it was handed.
+        lines.append(f"Read: {client.narrate(stats, brand)}")
     if best:
         lines.append(
             f"Best post: {best['post_id']} on {best['platform']} with "
@@ -48,9 +57,4 @@ def build_report(store: Store, goal: str = "") -> dict:
         )
     else:
         lines.append("No metrics recorded yet; the next period will set the baseline.")
-    # Private layer: the report joins the Analyst's performance
-    # history, which the Strategist reads when planning the next week.
-    from .context import append_analyst_history
-
-    append_analyst_history(store, stats)
     return {"stats": stats, "narrative": "\n".join(lines)}
