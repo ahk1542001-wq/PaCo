@@ -37,3 +37,34 @@ def compute_metrics(rows: list[dict]) -> dict:
     }
     best = max(posts, key=lambda p: p["engagement"], default=None)
     return {"totals": totals, "posts": posts, "best_post": best}
+
+
+def import_metrics(store, rows: list[dict]) -> int:
+    """Pull published-post metrics into the store.
+
+    Deduplicated on (post_id, date): a re-pull updates the stored
+    numbers instead of duplicating the post. Returns how many rows
+    were newly added. This is the ingest the Analyst's stage runs
+    on connector-shaped rows; the maths above never changes.
+    """
+    existing = store.read_dataset("metrics")
+    by_key = {(r.get("post_id", ""), r.get("date", "")): r for r in existing}
+    added = 0
+    for row in rows:
+        key = (str(row.get("post_id", "")), str(row.get("date", "")))
+        clean = {
+            "date": key[1],
+            "platform": str(row.get("platform", "")),
+            "post_id": key[0],
+            "reach": str(row.get("reach", "")),
+            "engagement": str(row.get("engagement", "")),
+            "clicks": str(row.get("clicks", "")),
+            "notes": str(row.get("notes", "")),
+        }
+        if key in by_key:
+            by_key[key].update(clean)
+        else:
+            by_key[key] = clean
+            added += 1
+    store.write_dataset("metrics", list(by_key.values()))
+    return added
