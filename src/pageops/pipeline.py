@@ -1,10 +1,11 @@
 """Pipeline for PageOps Agent: brief -> research -> plan -> draft -> check.
 
-This module is the CEO ORCHESTRATOR. PageOps runs like a small
-digital-marketing company: the CEO assigns work down the pipeline,
-enforces the human-approval gate, and consolidates the final report.
-Under it, one role agent per stage, each with a JD scope, assigned
-skills and its own tools (full spec: ARCHITECTURE.md):
+This module carries the two top layers of the company. The CEO
+control layer sets the assignment, holds the human-approval gate and
+consolidates the final report; the MAIN ORCHESTRATOR (process_week)
+executes the assignment, calling one role agent per stage in
+sequence. Each role has a JD scope, assigned skills and its own
+tools (full spec: ARCHITECTURE.md):
 
 - Trend Researcher (rss.fetch_feeds via fetch_trends): feeds -> trends
 - Content Strategist (generate_week): brief + brand voice -> 7 plan rows

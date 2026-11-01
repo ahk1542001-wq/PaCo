@@ -33,6 +33,14 @@ approve, cannot schedule, cannot invent numbers. Skills: Pocock
 `grill-with-docs` + `to-spec`; gtm-fleet chief-of-staff roster
 pattern. Tools: the store, the dashboard, the usage log.
 
+In this codebase the CEO control layer and the main orchestrator are
+two distinct layers of responsibility, both realised in the
+orchestration layer: the **CEO** is the control function (assignment,
+the approval gate on the dashboard, report consolidation and
+sign-off); the **main orchestrator** is `pipeline.process_week`, which
+executes the assignment through the roles in sequence and hands the
+finished week back up. Layers: CEO → main orchestrator → role agents.
+
 | Role | File | JD scope — owns / stops | Skills (reference) | Tools |
 |---|---|---|---|---|
 | Trend Researcher | `rss.py`, `pipeline.fetch_trends` | Owns trend evidence with sources + the brand's own numbers. Stops: never picks topics or writes copy | gtm-fleet `content-researcher`; Haines `customer-research` | RSS feeds (5), feedparser, metrics store |
