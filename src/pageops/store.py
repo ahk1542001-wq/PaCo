@@ -130,7 +130,7 @@ class Store:
     def get_brand_voice(self) -> dict:
         """Brand voice as a structured dict (lists split on ';')."""
         raw = {row["key"]: row["value"] for row in self.read_dataset("brand_voice")}
-        return {
+        voice = {
             "brand_name": raw.get("brand_name", ""),
             "services": [s.strip() for s in raw.get("services", "").split(";") if s.strip()],
             "audience": raw.get("audience", ""),
@@ -139,13 +139,11 @@ class Store:
             "required_hashtags": [
                 h.strip() for h in raw.get("required_hashtags", "").split(";") if h.strip()
             ],
-            "banned_phrases": [
-                p.strip() for p in raw.get("banned_phrases", "").split(";") if p.strip()
-            ],
-            "cta_markers": [
-                m.strip() for m in raw.get("cta_markers", "").split(";") if m.strip()
-            ],
         }
+        for key in ("banned_phrases", "cta_markers"):
+            if raw.get(key, "").strip():
+                voice[key] = [p.strip() for p in raw[key].split(";") if p.strip()]
+        return voice
 
     def add_plan_row(self, row: dict[str, str]) -> dict[str, str]:
         """Append a plan row, assigning a simple incrementing id if absent."""
