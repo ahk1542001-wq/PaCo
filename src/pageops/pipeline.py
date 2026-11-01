@@ -118,6 +118,27 @@ def draft_and_check(store: Store, client, row: dict) -> dict:
         text = _full_text(draft)
         result = check_draft(text, item.get("platform", ""), brand)
     summary = result.summary()
+    # The draft now exists: record it before the check completes, so
+    # the board's Drafted column and the write log show the real
+    # progression instead of a jump from planned to checked.
+    store.update_row("plan", row["id"], {"draft": text, "status": "drafted"})
+    summary, status = _review_tail(store, client, item, text, summary, result.passed)
+    return store.update_row(
+        "plan",
+        row["id"],
+        {"check_status": summary, "status": status},
+    )
+
+
+def _review_tail(
+    store: Store, client, item: dict, text: str, summary: str, rules_passed: bool
+) -> tuple[str, str]:
+    """Visuals + model verdict for a settled draft text.
+
+    Shared by draft_and_check and edit_item, so an edited draft goes
+    through exactly the same judgement as a fresh one. Returns the
+    extended evidence summary and the final status.
+    """
     # Visuals stage (Graphic Designer): the visual is produced from
     # the final draft text, self-checked for template compliance, and
     # its evidence joins the check evidence for the human. A failed
@@ -131,19 +152,88 @@ def draft_and_check(store: Store, client, row: dict) -> dict:
         visual_note = f"[VISUAL] FAIL - {exc}"
     summary += f"\n{visual_note}"
     status = "checked"
-    if result.passed and visual_ok:
-        # Deterministic rules passed; Muse Wonder gives the judgement
-        # verdict. A "revise" verdict flags the card for the human
-        # instead of letting it through to approval.
+    if rules_passed and visual_ok:
+        # Deterministic rules passed; the judge model gives the
+        # judgement verdict. A "revise" verdict flags the card for
+        # the human instead of letting it through to approval.
         verdict = client.verdict({"text": text, "platform": item.get("platform", "")}, summary)
         reasons = "; ".join(verdict.get("reasons", []))
         summary += f"\n[MODEL VERDICT] {verdict.get('verdict', '')} - {reasons}"
         status = "awaiting_approval" if verdict.get("verdict") == "pass" else "checked"
+    return summary, status
+
+
+def _get_row(store: Store, row_id: str) -> dict:
+    rows = {r["id"]: r for r in store.read_dataset("plan")}
+    row = rows.get(str(row_id))
+    if row is None:
+        raise KeyError(f"No plan row with id {row_id}")
+    return row
+
+
+def approve_item(store: Store, row_id: str) -> dict:
+    """The human gate, enforced here: only awaiting_approval approves.
+
+    A checked item (failed rules or a revise verdict) can never be
+    approved into the scheduling queue from any caller.
+    """
+    row = _get_row(store, row_id)
+    if row.get("status") != "awaiting_approval":
+        raise PermissionError(
+            f"Plan item {row_id} has status {row.get('status')!r}; "
+            "only 'awaiting_approval' items can be approved."
+        )
+    return store.update_row("plan", row["id"], {"status": "approved"})
+
+
+def reject_item(store: Store, row_id: str, reason: str = "") -> dict:
+    """Reject an undecided item; the reason is kept on the card."""
+    row = _get_row(store, row_id)
+    if row.get("status") not in ("awaiting_approval", "checked"):
+        raise PermissionError(
+            f"Plan item {row_id} has status {row.get('status')!r}; "
+            "only undecided items can be rejected."
+        )
     return store.update_row(
-        "plan",
-        row["id"],
-        {"draft": text, "check_status": summary, "status": status},
+        "plan", row["id"], {"status": "rejected", "reject_reason": reason}
     )
+
+
+def edit_item(store: Store, client, row_id: str, new_text: str) -> dict:
+    """Apply a human edit, then re-check AND re-verdict the new text.
+
+    Editing is a pre-approval act: approved or scheduled content is
+    locked. The edited text is never promoted on the checker alone.
+    """
+    row = _get_row(store, row_id)
+    if row.get("status") not in ("awaiting_approval", "checked"):
+        raise PermissionError(
+            f"Plan item {row_id} has status {row.get('status')!r}; "
+            "only items awaiting a decision can be edited."
+        )
+    brand = store.get_brand_voice()
+    result = check_draft(new_text, row.get("platform", ""), brand)
+    store.update_row("plan", row["id"], {"draft": new_text, "status": "drafted"})
+    summary, status = _review_tail(
+        store, client, row, new_text, result.summary(), result.passed
+    )
+    return store.update_row(
+        "plan", row["id"], {"check_status": summary, "status": status}
+    )
+
+
+def schedule_approved(store: Store, row_id: str) -> dict:
+    """Scheduling goes through the pipeline (the gate lives in scheduler)."""
+    from .scheduler import BufferClient, schedule_item
+
+    return schedule_item(store, row_id, BufferClient())
+
+
+def current_report(store: Store) -> dict:
+    """The Analyst's report, requested through the pipeline."""
+    from .report import build_report
+
+    return build_report(store)
 
 
 def process_week(store: Store, client, brief_text: str) -> list[dict]:
