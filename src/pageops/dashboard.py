@@ -212,12 +212,17 @@ def render_board(store: Store) -> str:
             '<section class="panel"><h2>Latest metrics</h2>'
             f"<table><tr>{head}</tr>{body}</table></section>"
         )
-        from .pipeline import current_report
+        from .pipeline import current_report, last_report
 
-        narrative = html.escape(current_report(store)["narrative"])
+        saved_report = last_report(store)
+        narrative = html.escape(
+            saved_report if saved_report else current_report(store)["narrative"]
+        )
         report_panel = (
             '<section class="panel"><h2>Performance report</h2>'
-            f"<pre>{narrative}</pre></section>"
+            f"<pre>{narrative}</pre>"
+            '<form method="post" action="/report">'
+            '<button type="submit">Run report</button></form></section>'
         )
 
     brief_form = (
@@ -271,6 +276,11 @@ def make_handler(store: Store):
                         for k in ("goal", "offer", "dates", "notes")
                     ]
                     intake_brief(store, " | ".join(p for p in parts if p))
+                elif self.path == "/report":
+                    from .model_client import get_client
+                    from .pipeline import report_week
+
+                    report_week(store, client=get_client())
                 elif self.path == "/action":
                     item_id = form.get("id", "")
                     action = form.get("action", "")
