@@ -5,7 +5,7 @@ runs a business page's weekly content operation end to end:
 one brief in, a week of checked and approved posts out, with a human
 approval gate that the code itself enforces. The demo brand is FYF AI.
 
-## Shape: a small marketing company — one CEO, six roles
+## Shape: a small marketing company — one CEO, two departments, six roles
 
 PageOps runs like a small digital-marketing company, not one
 monolithic agent. A **CEO orchestrator** (`pipeline.py`) controls the
@@ -17,14 +17,17 @@ read, understood, then implemented in our own code), and its own
 tools. The human owner sits above the CEO: the approval gate is the
 owner's click, and no role can cross it.
 
-**Layering.** Three layers — CEO → roles → pipeline stages — and
-only two kinds of connection: the CEO calls a role, and a stage hands
-its output to the next stage in sequence (through the store). Roles
-never call each other; there is no peer-to-peer wiring and no
-cross-stage link. Every connection in the system is a named handoff
-in the table above. In the code this is literal: `pipeline.py` is the
-only place roles are invoked from, and the store is the medium every
-handoff travels through.
+**Layering.** Clean layers — CEO → two departments → roles →
+pipeline stages — and only two kinds of connection: the CEO layer
+(through its execution arm, the main orchestrator) calls a role, and
+a stage hands its output to the next stage in sequence (through the
+store). Roles never call each other; there is no peer-to-peer wiring
+and no cross-stage link. The single cross-department connection is
+the approval gate: Department 1's brand-checked drafts cross into
+Department 2 only as the approved content package. Every connection
+in the system is a named handoff in the tables below. In the code
+this is literal: `pipeline.py` is the only place roles are invoked
+from, and the store is the medium every handoff travels through.
 
 **CEO — Orchestrator** (`pipeline.py`, code). JD: runs the week,
 briefs each role in order, routes pass / revise-once / flag, holds
@@ -39,7 +42,12 @@ orchestration layer: the **CEO** is the control function (assignment,
 the approval gate on the dashboard, report consolidation and
 sign-off); the **main orchestrator** is `pipeline.process_week`, which
 executes the assignment through the roles in sequence and hands the
-finished week back up. Layers: CEO → main orchestrator → role agents.
+finished week back up. Layers: CEO → departments → roles → stages.
+
+**Department 1 — Content Creation & Branding.** Decides what gets
+said and how it sounds: Research → Plan → Draft → Check. It never
+schedules or publishes; its finished product is the checked draft
+package, handed up through the approval gate.
 
 | Role | File | JD scope — owns / stops | Skills (reference) | Tools |
 |---|---|---|---|---|
@@ -47,6 +55,14 @@ finished week back up. Layers: CEO → main orchestrator → role agents.
 | Content Strategist | `pipeline.generate_week` | Owns the 7-day plan (topic, angle, format, platform, slot). Stops: no final copy, no approvals | Haines `content-strategy`; gtm-fleet `campaign-plan` | Meta Model API (Wonder), brand voice store |
 | Copywriter | `pipeline.draft_and_check` | Owns captions + hashtags in the brand voice, and the one revision. Stops: cannot pass or approve its own work | Haines `copywriting` + `copy-editing`; social-media-skills | Meta Model API (Wonder), brand voice store |
 | Brand Compliance Reviewer | `checker.py` + verdict step | Owns pass/fail per rule with quoted evidence + the model verdict. Stops: never edits, never approves; rules are code | gtm-fleet `brand-review`; Expert Panel pattern | Checker code, Meta Model API (Wonder verdict) |
+
+**Department 2 — Digital Marketing.** Gets approved content out and
+measures what it did: Schedule → Report. It never creates or alters
+content and works only on items that crossed the approval gate; its
+finished product is the weekly performance report.
+
+| Role | File | JD scope — owns / stops | Skills (reference) | Tools |
+|---|---|---|---|---|
 | Distribution Coordinator | `scheduler.py` | Owns queueing approved posts + recording queue IDs. Stops: hard stop — refuses anything unapproved; cannot alter content | None assigned (packs do not cover scheduling) | Buffer API (dry-run until live), scheduler code |
 | Performance Analyst | `metrics.py`, `report.py` | Owns the weekly report (goal → strategy → execution → result). Stops: numbers only from the metrics store | gtm-fleet `performance-report`; Haines `analytics` | Metrics code, Meta Model API (Wonder), Sheets mirror |
 

@@ -7,12 +7,16 @@ executes the assignment, calling one role agent per stage in
 sequence. Each role has a JD scope, assigned skills and its own
 tools (full spec: ARCHITECTURE.md):
 
+Department 1 — Content Creation & Branding:
 - Trend Researcher (rss.fetch_feeds via fetch_trends): feeds -> trends
 - Content Strategist (generate_week): brief + brand voice -> 7 plan rows
 - Copywriter (draft_and_check): plan row -> caption + hashtags
 - Brand Compliance Reviewer (checker.check_draft): draft -> pass/fail
   with quoted evidence, then a model verdict
-- (Human approval gate; the CEO never crosses it alone)
+- (Human approval gate; the CEO never crosses it alone. The gate is
+  also the department boundary: checked drafts cross into Department 2
+  only as the approved content package.)
+Department 2 — Digital Marketing:
 - Distribution Coordinator (scheduler.schedule_item): approved -> queue ID
 - Performance Analyst (report.build_report): metrics -> report
 
