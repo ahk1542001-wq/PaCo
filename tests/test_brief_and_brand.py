@@ -83,3 +83,19 @@ def test_dashboard_brief_flags_missing_offer(tmp_path):
         assert "missing: offer" in brief["brief_check"]
     finally:
         server.shutdown()
+
+
+
+def test_board_shows_brief_check_and_only_writable_brand_forms(tmp_path):
+    from pageops.dashboard import render_board
+
+    store = Store(tmp_path)
+    intake_brief(store, "x", fields={"goal": "Grow", "offer": "", "dates": "", "notes": ""})
+    rows = store.read_dataset("brand_voice")
+    rows.append({"key": "legacy_stray", "value": "old"})
+    store.write_dataset("brand_voice", rows)
+    board = render_board(store)
+    assert "Brief check:" in board
+    assert "missing: offer" in board
+    assert 'value="tone"' in board  # a writable key gets a form
+    assert "legacy_stray" not in board  # an unwritable key does not
