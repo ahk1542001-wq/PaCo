@@ -26,7 +26,9 @@ MODEL_WONDER = "muse-wonder-1.0"
 MODEL_SPARK_OPEN = "meta-models/muse-spark-open-1026"
 
 # Muse Wonder is the product's main LLM (owner's decision, 2026-11-01):
-# plan, drafts, report narrative and verdicts all run on Wonder. Spark
+# plan, drafts and the report narrative run on Wonder; verdicts
+# run on the judge (Spark Open via Baseten) when configured, and
+# fall back to Wonder only when no judge is configured
 # stays available for light utility calls where its lower cost matters.
 
 
