@@ -123,3 +123,13 @@ def test_edit_routes_its_verdict_to_the_judge(tmp_path):
     )
     assert judge.verdict_calls == 1
     assert updated["status"] == "awaiting_approval"
+
+
+
+def test_same_object_judge_is_treated_as_no_judge(tmp_path):
+    store = Store(tmp_path)
+    row = _planned_row(store)
+    main = SpyClient()
+    updated = draft_and_check(store, main, row, judge=main)
+    assert main.verdict_calls == 1  # the drafting client verdicts
+    assert updated["status"] == "awaiting_approval"
