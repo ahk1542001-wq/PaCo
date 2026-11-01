@@ -10,7 +10,7 @@ tools (full spec: ARCHITECTURE.md):
 Every role is self-contained: its own skills, its own tools, its own
 work, and it checks its own work before passing it up.
 
-Department 1 — Content Creation & Branding:
+Department 1 - Content Creation & Branding:
 - Strategist / Researcher (rss.fetch_feeds via fetch_trends, then
   generate_week): feeds + insights -> trends -> 7 plan rows
 - Copywriter (draft_and_check): plan row -> caption + hashtags
@@ -20,7 +20,7 @@ Department 1 — Content Creation & Branding:
 - (Human approval gate; the CEO never crosses it alone. The gate is
   also the department boundary: checked drafts cross into Department 2
   only as the approved content package.)
-Department 2 — Digital Marketing:
+Department 2 - Digital Marketing:
 - Scheduler / Publisher (scheduler.schedule_item): approved -> queue ID
 - Performance Analyst (report.build_report): metrics -> report
 
@@ -255,6 +255,41 @@ def schedule_approved(store: Store, row_id: str) -> dict:
     from .scheduler import BufferClient, schedule_item
 
     return schedule_item(store, row_id, BufferClient())
+
+
+def link_post(store: Store, row_id: str, post_id: str) -> dict:
+    """Attach the published post's ID to its plan row.
+
+    The scheduling queue ID and the platform post ID are different
+    identifiers; this is the honest join between them, made when
+    the post exists. Only a scheduled row can gain a post.
+    """
+    row = _get_row(store, row_id)
+    if row.get("status") != "scheduled":
+        raise PermissionError(
+            f"Plan item {row_id} has status {row.get('status')!r}; "
+            "only scheduled items can be linked to a published post."
+        )
+    return store.update_row("plan", row["id"], {"post_id": post_id})
+
+
+def report_week(store: Store, client=None, goal: str = "") -> dict:
+    """The Analyst's stage act: build the report and record it.
+
+    Recording means two writes: linked scheduled rows whose posts
+    are in the metrics store become "reported", and the period
+    joins the Analyst's history that feeds the next plan.
+    """
+    from .context import append_analyst_history
+    from .report import build_report
+
+    report = build_report(store, goal=goal, client=client)
+    covered = {r.get("post_id", "") for r in store.read_dataset("metrics")}
+    for row in store.read_dataset("plan"):
+        if row.get("status") == "scheduled" and row.get("post_id") in covered and row.get("post_id"):
+            store.update_row("plan", row["id"], {"status": "reported"})
+    append_analyst_history(store, report["stats"])
+    return report
 
 
 def current_report(store: Store) -> dict:
