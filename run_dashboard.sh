@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# PageOps Agent kanban dashboard launcher (read-only web board).
+# PageOps Agent kanban dashboard launcher.
 set -euo pipefail
 cd "$(dirname "$0")"
+
+# This VM's NO_PROXY value (IPv6 entries) crashes httpx URL parsing,
+# so both variables are unset before the dashboard starts.
+unset NO_PROXY no_proxy
 
 if [ -f .env ]; then
   set -a
