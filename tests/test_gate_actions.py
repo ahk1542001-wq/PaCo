@@ -183,8 +183,17 @@ def test_approve_form_carries_no_reason_input(tmp_path):
     store = Store(tmp_path)
     store.add_plan_row({"topic": "T", "status": "awaiting_approval", "draft": "D"})
     board = render_board(store)
-    approve_form = board.split('value="approve"')[0].rsplit("<form", 1)[-1]
-    assert 'name="reason"' not in approve_form
+    # Segment the board into whole forms, then judge each form by
+    # everything inside it, through its closing tag. (The earlier
+    # version of this test only looked before the Approve button and
+    # passed on the vulnerable single-form layout; the Spec review
+    # proved that empirically, so the pin now covers the full form.)
+    forms = board.split("<form")[1:]
+    approve_forms = [f for f in forms if 'value="approve"' in f]
+    reject_forms = [f for f in forms if 'value="reject"' in f]
+    assert len(approve_forms) == 1
+    assert 'name="reason"' not in approve_forms[0]
+    assert any('name="reason"' in f for f in reject_forms)
 
 
 def test_dashboard_happy_path_approve_then_schedule(tmp_path):
