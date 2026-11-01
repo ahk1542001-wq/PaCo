@@ -83,7 +83,7 @@ def test_edit_rechecks_the_draft(tmp_path):
         after_bad = store.read_dataset("plan")[0]
         assert after_bad["status"] == "checked"
         assert "[FAIL] banned_phrases" in after_bad["check_status"]
-        good = "Edited and clean. Message us to get started. #FYFAI #AIAutomation"
+        good = "Edited and clean. Message us to get started. #FYFAI #AIAutomation #SME"
         assert _post(base + "/action", {"id": row["id"], "action": "edit", "draft": good}) == 200
         after_good = store.read_dataset("plan")[0]
         assert after_good["status"] == "awaiting_approval"
