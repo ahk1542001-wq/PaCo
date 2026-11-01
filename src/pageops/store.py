@@ -18,7 +18,7 @@ DATASETS: dict[str, list[str]] = {
     "brand_voice": ["key", "value"],
     "plan": [
         "id", "date", "platform", "topic", "angle", "format", "status", "brief",
-        "draft", "check_status", "visual", "buffer_id",
+        "draft", "check_status", "visual", "reject_reason", "buffer_id",
     ],
     "metrics": ["date", "platform", "post_id", "reach", "engagement", "clicks", "notes"],
 }
