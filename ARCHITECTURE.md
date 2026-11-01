@@ -102,7 +102,7 @@ flowchart LR
 | `dashboard.py` | The only interface. Brief form, kanban board (Brief, Planned, Drafted, Checked, Awaiting approval, Scheduled, Reported), approve / edit / reject / schedule actions. Server-rendered, no build step. |
 | `pipeline.py` | Orchestrates the stages: intake, trends, plan, draft-and-check with one revision, verdict. |
 | `model_client.py` | Model access. `MetaModelClient` for the Meta Model API, an optional Baseten route for open weights, and `MockClient` so the whole system runs offline in tests. Every real call is written to a JSON-lines usage log. |
-| `checker.py` | Deterministic brand-rule checks in pure code: banned phrases, CTA present, platform length caps, required hashtag. Every verdict quotes the draft's own lines as evidence. |
+| `checker.py` | Deterministic brand-rule checks: the rules themselves (banned phrases, CTA markers, required hashtags) are read from the brand data; the enforcement is pure code. Platform length caps stay in code as platform facts. Every verdict quotes the draft's own lines as evidence. |
 | `store.py` | CSV store that mirrors the Google Sheets schema (Brand Voice, Plan, Metrics). The board reads the same store the pipeline writes, so the UI is live truth. |
 | `sheets_sync.py` | One-way push of the three datasets to Google Sheets for sharing and inspection. |
 | `scheduler.py` | Scheduling gate plus Buffer client. `schedule_item` raises unless the item's status is `approved`; this is proven by an automated test. Buffer runs in dry-run mode until the live key is wired. |
