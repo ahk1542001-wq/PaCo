@@ -224,8 +224,8 @@ def render_board(store: Store) -> str:
     return (
         "<!DOCTYPE html><html><head><meta charset='utf-8'>"
         '<meta http-equiv="refresh" content="15">'
-        f"<title>{brand_name} — PageOps board</title><style>{_CSS}</style></head><body>"
-        f"<header><h1>{brand_name} — content pipeline</h1>"
+        f"<title>{brand_name} - PageOps board</title><style>{_CSS}</style></head><body>"
+        f"<header><h1>{brand_name} - content pipeline</h1>"
         "<p>PageOps Agent, a digital marketing and content creation agent: brief, plan, checks, approvals, scheduling, report.</p></header>"
         f"{brief_form}"
         f"<div class='board'>{''.join(columns_html)}</div>"
