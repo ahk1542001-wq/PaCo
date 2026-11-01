@@ -148,6 +148,8 @@ def _review_tail(
         updated = produce_visual(store, {**item, "draft": text})
         visual_note = f"[VISUAL] PASS - {updated.get('visual', '')}"
         visual_ok = True
+        # The handoff chain has a named state for this moment.
+        store.update_row("plan", item["id"], {"status": "visual_ready"})
     except (ValueError, RuntimeError) as exc:
         visual_note = f"[VISUAL] FAIL - {exc}"
     summary += f"\n{visual_note}"
@@ -187,7 +189,13 @@ def approve_item(store: Store, row_id: str) -> dict:
 
 
 def reject_item(store: Store, row_id: str, reason: str = "") -> dict:
-    """Reject an undecided item; the reason is kept on the card."""
+    """Reject an undecided item; the reason is kept on the card.
+
+    The reason is required: a rejection without one teaches the
+    team nothing, and the spec keeps the reason on the card.
+    """
+    if not reason.strip():
+        raise ValueError("A rejection needs a reason; it is kept on the card.")
     row = _get_row(store, row_id)
     if row.get("status") not in ("awaiting_approval", "checked"):
         raise PermissionError(
@@ -234,6 +242,20 @@ def current_report(store: Store) -> dict:
     from .report import build_report
 
     return build_report(store)
+
+
+def run_brief(store: Store, client, brief_row_id: str) -> list[dict]:
+    """Run the pipeline for one brief card already on the board.
+
+    The dashboard's Run action goes through here, so the sequence
+    (plan, then draft + check per post, brief marked planned) is
+    assembled by the orchestrator, never by the handler.
+    """
+    brief_row = _get_row(store, brief_row_id)
+    rows = generate_week(store, client, brief_row.get("brief", ""))
+    drafted = [draft_and_check(store, client, row) for row in rows]
+    store.update_row("plan", brief_row["id"], {"status": "planned"})
+    return drafted
 
 
 def process_week(store: Store, client, brief_text: str) -> list[dict]:
