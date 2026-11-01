@@ -48,4 +48,9 @@ def build_report(store: Store, goal: str = "") -> dict:
         )
     else:
         lines.append("No metrics recorded yet; the next period will set the baseline.")
+    # Private layer: the report joins the Analyst's performance
+    # history, which the Strategist reads when planning the next week.
+    from .context import append_analyst_history
+
+    append_analyst_history(store, stats)
     return {"stats": stats, "narrative": "\n".join(lines)}
