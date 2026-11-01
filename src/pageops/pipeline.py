@@ -1,5 +1,17 @@
 """Pipeline for PageOps Agent: brief -> research -> plan -> draft -> check.
 
+This module is the ORCHESTRATOR. PageOps is a main + subs design: the
+orchestrator owns the week's state and calls one sub-agent per stage,
+each with a single job and a clear input/output:
+
+- Research sub (rss.fetch_feeds via fetch_trends): feeds -> trend items
+- Planner sub (generate_week): brief + brand voice -> 7 plan rows
+- Drafter sub (draft_and_check): plan row -> caption + hashtags
+- Checker sub (checker.check_draft): draft -> pass/fail + quoted evidence
+- (Human approval gate; the orchestrator never crosses it alone)
+- Scheduler sub (scheduler.schedule_item): approved item -> queue ID
+- Reporter sub (report.build_report): metrics -> report
+
 Every stage writes its state to the store, so the dashboard board is a
 live view of real pipeline state. Model calls go through the client
 interface (mock by default); the brand-rule checker is deterministic

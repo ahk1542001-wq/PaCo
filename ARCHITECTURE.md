@@ -5,6 +5,28 @@ runs a business page's weekly content operation end to end:
 one brief in, a week of checked and approved posts out, with a human
 approval gate that the code itself enforces. The demo brand is FYF AI.
 
+## Shape: one orchestrator, six sub-agents
+
+PageOps is not one monolithic agent. A single **orchestrator**
+(`pipeline.py`) owns the week's state and the order of work; each
+pipeline stage is a **sub-agent** with one job, a clear input and a
+clear output. No sub does another sub's work, and no sub runs unless
+the orchestrator calls it.
+
+| Sub-agent | File | Input → Output | Engine |
+|---|---|---|---|
+| **Orchestrator** (main) | `pipeline.py` | Brief → a week of checked items; owns state transitions and the revise-once loop | Code |
+| Research | `rss.py`, `pipeline.fetch_trends` | Feed list + brand metrics → trend items, each with a source link | Code |
+| Planner | `pipeline.generate_week` | Brief + brand voice + trends → 7 plan rows | Model |
+| Drafter | `pipeline.draft_and_check` | Plan row + brand voice → caption + hashtags | Model |
+| Checker | `checker.py` + verdict step | Full draft text + brand rules → pass/fail per rule with quoted evidence, then a model verdict | Code, then model |
+| Scheduler | `scheduler.py` | Approved item → Buffer queue ID, or a refusal | Code + Buffer API |
+| Reporter | `metrics.py`, `report.py` | Metrics rows + goal → report (numbers computed in code, narrative by the model) | Code, then model |
+
+The human approval gate sits between Checker and Scheduler. The
+orchestrator can move work up to that gate on its own; only a human
+click moves anything past it.
+
 ## Flow
 
 ```mermaid
