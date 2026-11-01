@@ -71,9 +71,9 @@ class SpyClient(MockClient):
     def __init__(self):
         self.context = None
 
-    def generate_plan(self, brief, brand_voice, context=""):
+    def generate_plan(self, brief, brand_voice, context="", trends=None):
         self.context = context
-        return super().generate_plan(brief, brand_voice, context=context)
+        return super().generate_plan(brief, brand_voice, context=context, trends=trends)
 
 
 def test_generate_week_receives_last_report_as_context(tmp_path):

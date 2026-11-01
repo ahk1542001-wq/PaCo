@@ -10,7 +10,7 @@ BRIEF = "Promote the chatbot offer to SME page owners this week"
 def test_mock_pipeline_end_to_end(tmp_path):
     store = Store(tmp_path)
     rows = process_week(store, MockClient(), BRIEF)
-    assert len(rows) == 3  # mock plan size
+    assert len(rows) == 7  # mock plan size: a full week
     for row in rows:
         assert row["status"] == "awaiting_approval"
         assert row["draft"]
