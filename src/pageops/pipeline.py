@@ -10,7 +10,7 @@ tools (full spec: ARCHITECTURE.md):
 Every role is self-contained: its own skills, its own tools, its own
 work, and it checks its own work before passing it up.
 
-Department 1 — Content Creation & Branding:
+Department 1 - Content Creation & Branding:
 - Strategist / Researcher (rss.fetch_feeds via fetch_trends, then
   generate_week): feeds + insights -> trends -> 7 plan rows
 - Copywriter (draft_and_check): plan row -> caption + hashtags
@@ -20,7 +20,7 @@ Department 1 — Content Creation & Branding:
 - (Human approval gate; the CEO never crosses it alone. The gate is
   also the department boundary: checked drafts cross into Department 2
   only as the approved content package.)
-Department 2 — Digital Marketing:
+Department 2 - Digital Marketing:
 - Scheduler / Publisher (scheduler.schedule_item): approved -> queue ID
 - Performance Analyst (report.build_report): metrics -> report
 
@@ -41,9 +41,40 @@ from .designer import produce_visual
 from .store import Store
 
 
-def intake_brief(store: Store, brief_text: str) -> dict:
-    """Record an incoming brief as a plan row in the Brief column."""
-    return store.add_plan_row({"status": "brief_received", "brief": brief_text})
+BRIEF_FIELDS = ("goal", "offer", "dates", "notes")
+
+BRAND_KEYS = (
+    "brand_name", "services", "audience", "tone", "rules",
+    "required_hashtags", "banned_phrases", "cta_markers",
+)
+
+
+def intake_brief(store: Store, brief_text: str, fields: dict | None = None) -> dict:
+    """Record an incoming brief as a plan row in the Brief column.
+
+    With form fields, the brief is also restated in structured form
+    on the row (brief_check), with anything missing flagged by name,
+    so a thin brief is visible before the pipeline spends on it.
+    """
+    row = {"status": "brief_received", "brief": brief_text}
+    if fields is not None:
+        present, missing = [], []
+        for key in BRIEF_FIELDS:
+            value = (fields.get(key) or "").strip()
+            if value:
+                present.append(f"{key.capitalize()}: {value}")
+            else:
+                missing.append(key)
+        parts = present + [f"missing: {key}" for key in missing]
+        row["brief_check"] = " | ".join(parts)
+    return store.add_plan_row(row)
+
+
+def update_brand_voice(store: Store, key: str, value: str) -> None:
+    """Edit the brand-assets layer as data, through the pipeline."""
+    if key not in BRAND_KEYS:
+        raise ValueError(f"Unknown brand voice key: {key}")
+    store.set_brand_value(key, value)
 
 
 def fetch_trends(store=None, feeds_file=None, fetcher=None, limit: int = 5) -> list[dict]:
@@ -120,7 +151,7 @@ def _full_text(draft: dict) -> str:
     return text
 
 
-def draft_and_check(store: Store, client, row: dict) -> dict:
+def draft_and_check(store: Store, client, row: dict, judge=None) -> dict:
     """Draft one plan item, run the checker, revise once on failure.
 
     Ends with status awaiting_approval (checks passed) or checked
@@ -142,7 +173,7 @@ def draft_and_check(store: Store, client, row: dict) -> dict:
     # the board's Drafted column and the write log show the real
     # progression instead of a jump from planned to checked.
     store.update_row("plan", row["id"], {"draft": text, "status": "drafted"})
-    summary, status = _review_tail(store, client, item, text, summary, result.passed)
+    summary, status = _review_tail(store, client, item, text, summary, result.passed, judge=judge)
     return store.update_row(
         "plan",
         row["id"],
@@ -151,7 +182,13 @@ def draft_and_check(store: Store, client, row: dict) -> dict:
 
 
 def _review_tail(
-    store: Store, client, item: dict, text: str, summary: str, rules_passed: bool
+    store: Store,
+    client,
+    item: dict,
+    text: str,
+    summary: str,
+    rules_passed: bool,
+    judge=None,
 ) -> tuple[str, str]:
     """Visuals + model verdict for a settled draft text.
 
@@ -178,7 +215,10 @@ def _review_tail(
         # Deterministic rules passed; the judge model gives the
         # judgement verdict. A "revise" verdict flags the card for
         # the human instead of letting it through to approval.
-        verdict = client.verdict({"text": text, "platform": item.get("platform", "")}, summary)
+        verdict_client = judge if judge is not None else client
+        verdict = verdict_client.verdict(
+            {"text": text, "platform": item.get("platform", "")}, summary
+        )
         reasons = "; ".join(verdict.get("reasons", []))
         summary += f"\n[MODEL VERDICT] {verdict.get('verdict', '')} - {reasons}"
         status = "awaiting_approval" if verdict.get("verdict") == "pass" else "checked"
@@ -227,7 +267,7 @@ def reject_item(store: Store, row_id: str, reason: str = "") -> dict:
     )
 
 
-def edit_item(store: Store, client, row_id: str, new_text: str) -> dict:
+def edit_item(store: Store, client, row_id: str, new_text: str, judge=None) -> dict:
     """Apply a human edit, then re-check AND re-verdict the new text.
 
     Editing is a pre-approval act: approved or scheduled content is
@@ -243,7 +283,7 @@ def edit_item(store: Store, client, row_id: str, new_text: str) -> dict:
     result = check_draft(new_text, row.get("platform", ""), brand)
     store.update_row("plan", row["id"], {"draft": new_text, "status": "drafted"})
     summary, status = _review_tail(
-        store, client, row, new_text, result.summary(), result.passed
+        store, client, row, new_text, result.summary(), result.passed, judge=judge
     )
     return store.update_row(
         "plan", row["id"], {"check_status": summary, "status": status}
@@ -257,6 +297,41 @@ def schedule_approved(store: Store, row_id: str) -> dict:
     return schedule_item(store, row_id, BufferClient())
 
 
+def link_post(store: Store, row_id: str, post_id: str) -> dict:
+    """Attach the published post's ID to its plan row.
+
+    The scheduling queue ID and the platform post ID are different
+    identifiers; this is the honest join between them, made when
+    the post exists. Only a scheduled row can gain a post.
+    """
+    row = _get_row(store, row_id)
+    if row.get("status") != "scheduled":
+        raise PermissionError(
+            f"Plan item {row_id} has status {row.get('status')!r}; "
+            "only scheduled items can be linked to a published post."
+        )
+    return store.update_row("plan", row["id"], {"post_id": post_id})
+
+
+def report_week(store: Store, client=None, goal: str = "") -> dict:
+    """The Analyst's stage act: build the report and record it.
+
+    Recording means two writes: linked scheduled rows whose posts
+    are in the metrics store become "reported", and the period
+    joins the Analyst's history that feeds the next plan.
+    """
+    from .context import append_analyst_history
+    from .report import build_report
+
+    report = build_report(store, goal=goal, client=client)
+    covered = {r.get("post_id", "") for r in store.read_dataset("metrics")}
+    for row in store.read_dataset("plan"):
+        if row.get("status") == "scheduled" and row.get("post_id") in covered and row.get("post_id"):
+            store.update_row("plan", row["id"], {"status": "reported"})
+    append_analyst_history(store, report["stats"])
+    return report
+
+
 def current_report(store: Store) -> dict:
     """The Analyst's report, requested through the pipeline."""
     from .report import build_report
@@ -264,7 +339,9 @@ def current_report(store: Store) -> dict:
     return build_report(store)
 
 
-def run_brief(store: Store, client, brief_row_id: str, trends_fetcher=None) -> list[dict]:
+def run_brief(
+    store: Store, client, brief_row_id: str, trends_fetcher=None, judge=None
+) -> list[dict]:
     """Run the pipeline for one brief card already on the board.
 
     The dashboard's Run action goes through here, so the sequence
@@ -274,16 +351,16 @@ def run_brief(store: Store, client, brief_row_id: str, trends_fetcher=None) -> l
     brief_row = _get_row(store, brief_row_id)
     trends = _trends_for(store, trends_fetcher)
     rows = generate_week(store, client, brief_row.get("brief", ""), trends=trends)
-    drafted = [draft_and_check(store, client, row) for row in rows]
+    drafted = [draft_and_check(store, client, row, judge=judge) for row in rows]
     store.update_row("plan", brief_row["id"], {"status": "planned"})
     return drafted
 
 
 def process_week(
-    store: Store, client, brief_text: str, trends_fetcher=None
+    store: Store, client, brief_text: str, trends_fetcher=None, judge=None
 ) -> list[dict]:
     """Full mock-safe run: brief, research, plan, draft + check each post."""
     intake_brief(store, brief_text)
     trends = _trends_for(store, trends_fetcher)
     rows = generate_week(store, client, brief_text, trends=trends)
-    return [draft_and_check(store, client, row) for row in rows]
+    return [draft_and_check(store, client, row, judge=judge) for row in rows]
