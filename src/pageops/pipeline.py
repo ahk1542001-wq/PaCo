@@ -280,10 +280,11 @@ def report_week(store: Store, goal: str = "", client=None) -> dict:
     are in the metrics store become "reported", and the period
     joins the Analyst's history that feeds the next plan.
     """
-    from .context import append_analyst_history
+    from .context import append_analyst_history, save_last_report
     from .report import build_report
 
     report = build_report(store, goal=goal, client=client)
+    save_last_report(store, report["narrative"])
     covered = {r.get("post_id", "") for r in store.read_dataset("metrics")}
     for row in store.read_dataset("plan"):
         post_id = row.get("post_id", "")
@@ -291,6 +292,13 @@ def report_week(store: Store, goal: str = "", client=None) -> dict:
             store.update_row("plan", row["id"], {"status": "reported"})
     append_analyst_history(store, report["stats"])
     return report
+
+
+def last_report(store: Store) -> str:
+    """The latest recorded report narrative ("" until one runs)."""
+    from .context import load_last_report
+
+    return load_last_report(store)
 
 
 def current_report(store: Store) -> dict:
