@@ -1,0 +1,29 @@
+# CodeRabbit configuration — PageOps Agent
+# Review every pull request on two axes, in this order.
+language: "en-GB"
+tone_instructions: "Be direct and specific. Cite the file and line. No generic praise."
+reviews:
+  profile: "chill"
+  request_changes_workflow: true
+  auto_review:
+    enabled: true
+    drafts: false
+  path_instructions:
+    - path: "**"
+      instructions: >-
+        Axis 1, STANDARDS: tests must be present for behaviour changes and the
+        full suite must pass; no secrets, tokens or personal data anywhere in
+        the diff; no dead code; keep diffs small and single-purpose; never
+        weaken or delete a failing test to make a check pass.
+    - path: "src/pageops/**"
+      instructions: >-
+        Axis 2, SPEC: behaviour must match the product spec (the build
+        package's 01-product-spec.md) and the JD of the role whose stage the
+        change touches. Flag anything not in the spec. Hard rules that must
+        never be weakened: the scheduler refuses anything not in approved
+        status; the brand checker runs on the full post text (draft plus
+        hashtags); report numbers come only from the metrics store; no role
+        calls another role directly (handoffs go through the orchestrator
+        and the store).
+chat:
+  art: false
