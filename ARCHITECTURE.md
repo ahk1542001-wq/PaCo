@@ -5,7 +5,7 @@ runs a business page's weekly content operation end to end:
 one brief in, a week of checked and approved posts out, with a human
 approval gate that the code itself enforces. The demo brand is FYF AI.
 
-## Shape: a small marketing company — one CEO, two departments, seven roles
+## Shape: a small marketing company — one CEO, two departments, six roles
 
 PageOps runs like a small digital-marketing company, not one
 monolithic agent. A **CEO orchestrator** (`pipeline.py`) controls the
@@ -45,17 +45,16 @@ executes the assignment through the roles in sequence and hands the
 finished week back up. Layers: CEO → departments → roles → stages.
 
 **Department 1 — Content Creation & Branding.** Decides what gets
-said and how it sounds: Research → Plan → Draft → Check. It never
+said and how it sounds and looks: Research & Plan → Draft → Visuals → Check. It never
 schedules or publishes; its finished product is the checked draft
 package, handed up through the approval gate.
 
 | Role | File | JD scope — owns / stops | Skills (reference) | Tools |
 |---|---|---|---|---|
-| Trend Researcher | `rss.py`, `pipeline.fetch_trends` | Owns trend evidence with sources + the brand's own numbers. Stops: never picks topics or writes copy | gtm-fleet `content-researcher`; Haines `customer-research` | RSS feeds (5), feedparser, metrics store |
-| Content Strategist | `pipeline.generate_week` | Owns the 7-day plan (topic, angle, format, platform, slot). Stops: no final copy, no approvals | Haines `content-strategy`; gtm-fleet `campaign-plan` | Meta Model API (Wonder), brand voice store |
-| Copywriter | `pipeline.draft_and_check` | Owns captions + hashtags in the brand voice, and the one revision. Stops: cannot pass or approve its own work | Haines `copywriting` + `copy-editing`; social-media-skills | Meta Model API (Wonder), brand voice store |
-| Graphic Designer | `designer.py` (stage being added, M21) | Owns visual production per post (posters, carousels, thumbnails) from brand templates. Stops: never freestyles off-template, writes no copy, redefines no brand assets | gtm-fleet `brand-designer` pattern; local poster-studio skill | Brand-assets layer (templates, logo, fonts), Meta Model API (Muse Image) inside templates |
-| Brand Compliance Reviewer | `checker.py` + verdict step | Owns pass/fail per rule with quoted evidence + the model verdict. Stops: never edits, never approves; rules are code | gtm-fleet `brand-review`; Expert Panel pattern | Checker code, Meta Model API (Wonder verdict) |
+| Strategist / Researcher | `rss.py`, `pipeline.fetch_trends`, `pipeline.generate_week` | Owns trend + competitor research with sources, and the 7-day plan built on it. Stops: no final copy or visuals, no approvals. Self-check: every claim sourced; plan re-read against brand voice + own numbers | gtm-fleet `content-researcher`; Haines `customer-research` + `content-strategy`; gtm-fleet `campaign-plan` | RSS feeds (5), feedparser, page insights (read-only), metrics store, Meta Model API (Wonder) |
+| Copywriter | `pipeline.draft_and_check` | Owns captions + hashtags in the brand voice, and the one revision. Stops: cannot pass or approve its own work. Self-check: drafts linted against voice rules + banned phrases before hand-up | Haines `copywriting` + `copy-editing`; owner's Burmese voice skills; social-media-skills | Meta Model API (Wonder), brand voice store |
+| Graphic Designer | `designer.py` (stage being added, M21) | Owns visual production per post (posters, carousels, thumbnails) from brand templates. Stops: never freestyles off-template, writes no copy, redefines no brand assets. Self-check: template compliance (logo, colors, fonts) verified before hand-up | gtm-fleet `brand-designer` pattern; local poster-studio skill | Brand-assets layer (templates, logo, fonts), Meta Model API (Muse Image) inside templates |
+| Brand Checker | `checker.py` + verdict step | The verify role: owns pass/fail per rule (banned phrases, no price/date promises, logo present) with quoted evidence + the model verdict. Stops: never edits, never approves; rules are code. Self-check: a verdict without quoted evidence is invalid | gtm-fleet `brand-review`; Expert Panel pattern | Checker code, Meta Model API (Wonder verdict) |
 
 **Brand-assets layer.** Department 1 owns the single brand source
 every role consumes: colors, logo files, fonts, templates, voice
@@ -71,8 +70,8 @@ finished product is the weekly performance report.
 
 | Role | File | JD scope — owns / stops | Skills (reference) | Tools |
 |---|---|---|---|---|
-| Distribution Coordinator | `scheduler.py` | Owns queueing approved posts + recording queue IDs. Stops: hard stop — refuses anything unapproved; cannot alter content | None assigned (packs do not cover scheduling) | Buffer API (dry-run until live), scheduler code |
-| Performance Analyst | `metrics.py`, `report.py` | Owns the weekly report (goal → strategy → execution → result). Stops: numbers only from the metrics store | gtm-fleet `performance-report`; Haines `analytics` | Metrics code, Meta Model API (Wonder), Sheets mirror |
+| Scheduler / Publisher | `scheduler.py` | Owns queueing and publishing approved posts + recording queue IDs. Stops: hard stop — refuses anything unapproved; cannot alter content. Self-check: refusal test + queue IDs read back | None assigned (packs do not cover scheduling) | Buffer API (dry-run until live) or Postiz, scheduler code |
+| Performance Analyst | `metrics.py`, `report.py` | Owns the weekly report: metrics + ads analysis (goal → strategy → execution → result). Stops: numbers only from the metrics store and ads reads. Self-check: maths recomputed; every number traced to its source row | gtm-fleet `performance-report`; Haines `analytics`; Meta Ads set | Metrics code, insights + ads (read-only), Meta Model API (Wonder), Sheets mirror |
 
 ## Flow
 
