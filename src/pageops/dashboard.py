@@ -281,11 +281,9 @@ def make_handler(store: Store):
                     item_id = form.get("id", "")
                     action = form.get("action", "")
                     if action == "run":
-                        from .model_client import MockClient, get_client
+                        from .model_client import MockClient, get_client, get_judge_client
                         from .pipeline import run_brief
                         from .rss import fetch_feeds
-
-                        from .model_client import get_judge_client
 
                         client = get_client()
                         # Live mode researches the live feeds; mock
