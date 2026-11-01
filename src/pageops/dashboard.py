@@ -35,6 +35,7 @@ STATUS_TO_COLUMN: dict[str, str] = {
     "brief": "brief",
     "planned": "planned",
     "drafted": "drafted",
+    "visual_ready": "drafted",
     "checked": "checked",
     "awaiting_approval": "awaiting_approval",
     "approved": "awaiting_approval",
@@ -91,6 +92,23 @@ def _actions(row: dict[str, str]) -> str:
             '<form method="post" action="/action" class="actions">'
             f'<input type="hidden" name="id" value="{item_id}">'
             '<button name="action" value="approve" type="submit">Approve</button>'
+            '<input name="reason" placeholder="Rejection reason (kept on the card)">'
+            '<button name="action" value="reject" type="submit">Reject</button>'
+            "</form>"
+            '<form method="post" action="/action" class="edit">'
+            f'<input type="hidden" name="id" value="{item_id}">'
+            f'<textarea name="draft" rows="3">{draft_text}</textarea>'
+            '<button name="action" value="edit" type="submit">Save edit + re-check</button>'
+            "</form>"
+        )
+    if status == "checked":
+        # Flagged for the human: no Approve (the gate), but the human
+        # can fix the draft or reject it with a reason from the board.
+        draft_text = html.escape(row.get("draft", ""))
+        return (
+            '<form method="post" action="/action" class="actions">'
+            f'<input type="hidden" name="id" value="{item_id}">'
+            '<input name="reason" placeholder="Rejection reason (kept on the card)">'
             '<button name="action" value="reject" type="submit">Reject</button>'
             "</form>"
             '<form method="post" action="/action" class="edit">'
@@ -131,6 +149,8 @@ def _card(row: dict[str, str]) -> str:
         extras += f'<div class="meta checks">{checks}</div>'
     if row.get("buffer_id"):
         extras += f'<div class="meta">Queue: {html.escape(row["buffer_id"])}</div>'
+    if row.get("reject_reason"):
+        extras += f'<div class="meta">Rejected: {html.escape(row["reject_reason"])}</div>'
     return (
         '<div class="card">'
         f'<div class="topic">{html.escape(title)}</div>'
@@ -182,9 +202,9 @@ def render_board(store: Store) -> str:
             '<section class="panel"><h2>Latest metrics</h2>'
             f"<table><tr>{head}</tr>{body}</table></section>"
         )
-        from .report import build_report
+        from .pipeline import current_report
 
-        narrative = html.escape(build_report(store)["narrative"])
+        narrative = html.escape(current_report(store)["narrative"])
         report_panel = (
             '<section class="panel"><h2>Performance report</h2>'
             f"<pre>{narrative}</pre></section>"
@@ -246,42 +266,26 @@ def make_handler(store: Store):
                     action = form.get("action", "")
                     if action == "run":
                         from .model_client import get_client
-                        from .pipeline import draft_and_check, generate_week
+                        from .pipeline import run_brief
 
-                        rows = {r["id"]: r for r in store.read_dataset("plan")}
-                        brief_text = rows[item_id].get("brief", "")
-                        client = get_client()
-                        for new_row in generate_week(store, client, brief_text):
-                            draft_and_check(store, client, new_row)
-                        store.update_row("plan", item_id, {"status": "planned"})
+                        run_brief(store, get_client(), item_id)
                     elif action == "edit":
-                        from .checker import check_draft
+                        from .model_client import get_client
+                        from .pipeline import edit_item
 
-                        rows = {r["id"]: r for r in store.read_dataset("plan")}
-                        current = rows[item_id]
-                        new_text = form.get("draft", "")
-                        result = check_draft(
-                            new_text,
-                            current.get("platform", ""),
-                            store.get_brand_voice(),
-                        )
-                        store.update_row(
-                            "plan",
-                            item_id,
-                            {
-                                "draft": new_text,
-                                "check_status": result.summary(),
-                                "status": "awaiting_approval" if result.passed else "checked",
-                            },
-                        )
+                        edit_item(store, get_client(), item_id, form.get("draft", ""))
                     elif action == "approve":
-                        store.update_row("plan", item_id, {"status": "approved"})
-                    elif action == "reject":
-                        store.update_row("plan", item_id, {"status": "rejected"})
-                    elif action == "schedule":
-                        from .scheduler import BufferClient, schedule_item
+                        from .pipeline import approve_item
 
-                        schedule_item(store, item_id, BufferClient())
+                        approve_item(store, item_id)
+                    elif action == "reject":
+                        from .pipeline import reject_item
+
+                        reject_item(store, item_id, form.get("reason", ""))
+                    elif action == "schedule":
+                        from .pipeline import schedule_approved
+
+                        schedule_approved(store, item_id)
                     else:
                         raise ValueError(f"Unknown action: {action}")
                 else:
