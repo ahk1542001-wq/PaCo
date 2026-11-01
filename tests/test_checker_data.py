@@ -51,3 +51,65 @@ def test_defaults_apply_when_brand_data_lacks_the_keys():
     rules = _by_rule(result)
     assert not rules["banned_phrases"].passed  # built-in defaults still protect
     assert not rules["cta_present"].passed
+
+
+
+def test_seed_lists_match_checker_defaults():
+    # The seed (fresh stores) and the fallback defaults (legacy
+    # stores) are two copies of the same lists; pin them together
+    # so they cannot drift into enforcing different rules.
+    from pageops.checker import DEFAULT_BANNED_PHRASES, DEFAULT_CTA_MARKERS
+    from pageops.store import BRAND_VOICE_SEED
+
+    seed_banned = [p.strip() for p in BRAND_VOICE_SEED["banned_phrases"].split(";")]
+    seed_cta = [m.strip() for m in BRAND_VOICE_SEED["cta_markers"].split(";")]
+    assert seed_banned == DEFAULT_BANNED_PHRASES
+    assert seed_cta == DEFAULT_CTA_MARKERS
+
+
+def test_store_seed_parse_and_edit_drive_the_verdict(tmp_path):
+    # The full store path: seed -> get_brand_voice -> checker, then
+    # a data edit through the dataset changes the outcome.
+    from pageops.store import Store
+
+    store = Store(tmp_path)
+    brand = store.get_brand_voice()
+    violating = check_draft(
+        "Secret guaranteed income. Message us. #FYFAI #AIAutomation #SME",
+        "facebook",
+        brand,
+    )
+    assert not _by_rule(violating)["banned_phrases"].passed
+
+    rows = store.read_dataset("brand_voice")
+    for row in rows:
+        if row["key"] == "banned_phrases":
+            row["value"] = "purple banana"
+    store.write_dataset("brand_voice", rows)
+    edited = store.get_brand_voice()
+    now_clean = check_draft(
+        "Secret guaranteed income. Message us. #FYFAI #AIAutomation #SME",
+        "facebook",
+        edited,
+    )
+    assert _by_rule(now_clean)["banned_phrases"].passed
+    now_banned = check_draft(
+        "Try the purple banana method. Message us. #FYFAI #AIAutomation #SME",
+        "facebook",
+        edited,
+    )
+    assert not _by_rule(now_banned)["banned_phrases"].passed
+
+
+def test_legacy_store_without_rule_keys_keeps_default_protection(tmp_path):
+    from pageops.store import Store
+
+    store = Store(tmp_path)
+    rows = [r for r in store.read_dataset("brand_voice") if r["key"] not in ("banned_phrases", "cta_markers")]
+    store.write_dataset("brand_voice", rows)
+    brand = store.get_brand_voice()
+    assert "banned_phrases" not in brand  # checker falls back to defaults
+    result = check_draft(
+        "Secret guaranteed income. #FYFAI #AIAutomation #SME", "facebook", brand
+    )
+    assert not _by_rule(result)["banned_phrases"].passed
