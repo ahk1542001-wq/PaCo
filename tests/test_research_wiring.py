@@ -24,9 +24,14 @@ def broken_fetcher(feeds_file=None):
     raise RuntimeError("feed unreachable")
 
 
+SENTINEL = object()
+
+
 class TrendSpy(MockClient):
     def __init__(self):
-        self.trends = None
+        # Sentinel, not None: lets the hermetic test distinguish
+        # "planner called with trends=None" from "never called".
+        self.trends = SENTINEL
 
     def generate_plan(self, brief, brand_voice, context="", trends=None):
         self.trends = trends
@@ -55,6 +60,17 @@ def test_broken_feed_never_gates_the_run(tmp_path):
     rows = process_week(store, MockClient(), "Weekly brief", trends_fetcher=broken_fetcher)
     assert len(rows) == 7
     assert all(r["status"] == "awaiting_approval" for r in rows)
+
+
+def test_run_brief_survives_a_broken_feed(tmp_path):
+    # run_brief is the dashboard's entry point; the no-gate rule
+    # must hold there too, not only in process_week.
+    from pageops.pipeline import intake_brief, run_brief
+
+    store = Store(tmp_path)
+    brief = intake_brief(store, "Weekly brief")
+    rows = run_brief(store, MockClient(), brief["id"], trends_fetcher=broken_fetcher)
+    assert len(rows) == 7
 
 
 def test_generate_week_threads_trends(tmp_path):
