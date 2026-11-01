@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from pageops.context import latest_analyst_summary, load_trend_notes  # noqa: E402
 from pageops.model_client import MockClient, get_client  # noqa: E402
 from pageops.pipeline import fetch_trends, process_week  # noqa: E402
+from pageops.pipeline import report_week  # noqa: E402
 from pageops.report import build_report  # noqa: E402
 from pageops.scheduler import BufferClient, schedule_item  # noqa: E402
 from pageops.store import Store  # noqa: E402
@@ -77,7 +78,7 @@ def run_checks(data_dir: Path) -> list[tuple[str, bool, str]]:
         {"date": "2026-08-20", "platform": "facebook", "post_id": "p1",
          "reach": "36", "engagement": "5", "clicks": "0", "notes": ""},
     )
-    report = build_report(store)
+    report = report_week(store, MockClient())
     check(
         "report built from store numbers",
         "reach 36" in report["narrative"],
