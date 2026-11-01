@@ -64,16 +64,36 @@ def fetch_trends(store=None, feeds_file=None, fetcher=None, limit: int = 5) -> l
     return items
 
 
-def generate_week(store: Store, client, brief_text: str) -> list[dict]:
+def _trends_for(store: Store, trends_fetcher) -> list | None:
+    """Fetch + snapshot trends when a fetcher is supplied.
+
+    Trends are an input, never a gate: a dead feed returns None and
+    the week is planned without them.
+    """
+    if trends_fetcher is None:
+        return None
+    try:
+        return fetch_trends(store=store, fetcher=trends_fetcher)
+    except Exception:
+        return None
+
+
+def generate_week(
+    store: Store, client, brief_text: str, trends: list | None = None
+) -> list[dict]:
     """Generate the content plan for one brief and store each post.
 
-    The long-term loop: the Analyst's latest history summary goes to
-    the planner as context, so last period's results shape this plan.
+    Research first: current trends (already fetched by the
+    orchestrator) and the long-term loop — the Analyst's latest
+    history summary as context — both reach the planner, so this
+    plan is built on what is happening and what worked before.
     """
     from .context import latest_analyst_summary
 
     brand = store.get_brand_voice()
-    plan = client.generate_plan(brief_text, brand, context=latest_analyst_summary(store))
+    plan = client.generate_plan(
+        brief_text, brand, context=latest_analyst_summary(store), trends=trends
+    )
     rows = []
     for post in plan.get("posts", []):
         rows.append(
@@ -244,7 +264,7 @@ def current_report(store: Store) -> dict:
     return build_report(store)
 
 
-def run_brief(store: Store, client, brief_row_id: str) -> list[dict]:
+def run_brief(store: Store, client, brief_row_id: str, trends_fetcher=None) -> list[dict]:
     """Run the pipeline for one brief card already on the board.
 
     The dashboard's Run action goes through here, so the sequence
@@ -252,14 +272,18 @@ def run_brief(store: Store, client, brief_row_id: str) -> list[dict]:
     assembled by the orchestrator, never by the handler.
     """
     brief_row = _get_row(store, brief_row_id)
-    rows = generate_week(store, client, brief_row.get("brief", ""))
+    trends = _trends_for(store, trends_fetcher)
+    rows = generate_week(store, client, brief_row.get("brief", ""), trends=trends)
     drafted = [draft_and_check(store, client, row) for row in rows]
     store.update_row("plan", brief_row["id"], {"status": "planned"})
     return drafted
 
 
-def process_week(store: Store, client, brief_text: str) -> list[dict]:
-    """Full mock-safe run: brief, plan, then draft + check for each post."""
+def process_week(
+    store: Store, client, brief_text: str, trends_fetcher=None
+) -> list[dict]:
+    """Full mock-safe run: brief, research, plan, draft + check each post."""
     intake_brief(store, brief_text)
-    rows = generate_week(store, client, brief_text)
+    trends = _trends_for(store, trends_fetcher)
+    rows = generate_week(store, client, brief_text, trends=trends)
     return [draft_and_check(store, client, row) for row in rows]
