@@ -124,6 +124,16 @@ def _actions(row: dict[str, str]) -> str:
             '<button name="action" value="schedule" type="submit">Schedule (dry-run)</button>'
             "</form>"
         )
+    if status == "scheduled":
+        # After the post goes out, the operator links the platform
+        # post ID here; the report stage can then mark it reported.
+        return (
+            '<form method="post" action="/action" class="actions">'
+            f'<input type="hidden" name="id" value="{item_id}">'
+            '<input name="post_id" placeholder="Published post ID">'
+            '<button name="action" value="link" type="submit">Link post</button>'
+            "</form>"
+        )
     return ""
 
 
@@ -291,6 +301,10 @@ def make_handler(store: Store):
                         from .pipeline import schedule_approved
 
                         schedule_approved(store, item_id)
+                    elif action == "link":
+                        from .pipeline import link_post
+
+                        link_post(store, item_id, form.get("post_id", ""))
                     else:
                         raise ValueError(f"Unknown action: {action}")
                 else:
