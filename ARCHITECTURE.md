@@ -5,7 +5,7 @@ runs a business page's weekly content operation end to end:
 one brief in, a week of checked and approved posts out, with a human
 approval gate that the code itself enforces. The demo brand is FYF AI.
 
-## Shape: a small marketing company — one CEO, two departments, six roles
+## Shape: a small marketing company — one CEO, two departments, seven roles
 
 PageOps runs like a small digital-marketing company, not one
 monolithic agent. A **CEO orchestrator** (`pipeline.py`) controls the
@@ -54,7 +54,15 @@ package, handed up through the approval gate.
 | Trend Researcher | `rss.py`, `pipeline.fetch_trends` | Owns trend evidence with sources + the brand's own numbers. Stops: never picks topics or writes copy | gtm-fleet `content-researcher`; Haines `customer-research` | RSS feeds (5), feedparser, metrics store |
 | Content Strategist | `pipeline.generate_week` | Owns the 7-day plan (topic, angle, format, platform, slot). Stops: no final copy, no approvals | Haines `content-strategy`; gtm-fleet `campaign-plan` | Meta Model API (Wonder), brand voice store |
 | Copywriter | `pipeline.draft_and_check` | Owns captions + hashtags in the brand voice, and the one revision. Stops: cannot pass or approve its own work | Haines `copywriting` + `copy-editing`; social-media-skills | Meta Model API (Wonder), brand voice store |
+| Graphic Designer | `designer.py` (stage being added, M21) | Owns visual production per post (posters, carousels, thumbnails) from brand templates. Stops: never freestyles off-template, writes no copy, redefines no brand assets | gtm-fleet `brand-designer` pattern; local poster-studio skill | Brand-assets layer (templates, logo, fonts), Meta Model API (Muse Image) inside templates |
 | Brand Compliance Reviewer | `checker.py` + verdict step | Owns pass/fail per rule with quoted evidence + the model verdict. Stops: never edits, never approves; rules are code | gtm-fleet `brand-review`; Expert Panel pattern | Checker code, Meta Model API (Wonder verdict) |
+
+**Brand-assets layer.** Department 1 owns the single brand source
+every role consumes: colors, logo files, fonts, templates, voice
+rules. Today that is the brand voice store plus the seed values in
+the build package; when the owner's official FYF AI brand files
+reach the workspace they load into this layer and replace the seed
+in one swap. Department 2 consumes the layer read-only.
 
 **Department 2 — Digital Marketing.** Gets approved content out and
 measures what it did: Schedule → Report. It never creates or alters
