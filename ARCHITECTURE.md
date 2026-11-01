@@ -54,7 +54,7 @@ package, handed up through the approval gate.
 | Strategist / Researcher | `rss.py`, `pipeline.fetch_trends`, `pipeline.generate_week` | Owns trend + competitor research with sources, and the 7-day plan built on it. Stops: no final copy or visuals, no approvals. Self-check: every claim sourced; plan re-read against brand voice + own numbers | gtm-fleet `content-researcher`; Haines `customer-research` + `content-strategy`; gtm-fleet `campaign-plan` | RSS feeds (5), feedparser, page insights (read-only), metrics store, Meta Model API (Wonder) |
 | Copywriter | `pipeline.draft_and_check` | Owns captions + hashtags in the brand voice, and the one revision. Stops: cannot pass or approve its own work. Self-check: drafts linted against voice rules + banned phrases before hand-up | Haines `copywriting` + `copy-editing`; owner's Burmese voice skills; social-media-skills | Meta Model API (Wonder), brand voice store |
 | Graphic Designer | `designer.py` (stage being added, M21) | Owns visual production per post (posters, carousels, thumbnails) from brand templates. Stops: never freestyles off-template, writes no copy, redefines no brand assets. Self-check: template compliance (logo, colors, fonts) verified before hand-up | gtm-fleet `brand-designer` pattern; local poster-studio skill | Brand-assets layer (templates, logo, fonts), Meta Model API (Muse Image) inside templates |
-| Brand Checker | `checker.py` + verdict step | The verify role: owns pass/fail per rule (banned phrases, no price/date promises, logo present) with quoted evidence + the model verdict. Stops: never edits, never approves; rules are code. Self-check: a verdict without quoted evidence is invalid | gtm-fleet `brand-review`; Expert Panel pattern | Checker code, Meta Model API (Wonder verdict) |
+| Brand Checker | `checker.py` + verdict step | The verify role: owns pass/fail per rule (banned phrases, no price/date promises, logo present) with quoted evidence + the model verdict. Stops: never edits, never approves; the rules live in the brand data. Self-check: a verdict without quoted evidence is invalid | gtm-fleet `brand-review`; Expert Panel pattern | Checker code, judge model verdict (Muse Spark Open via Baseten) |
 
 **Brand-assets layer.** Department 1 owns the single brand source
 every role consumes: colors, logo files, fonts, templates, voice
@@ -84,7 +84,7 @@ flowchart LR
     E -- fail --> F[One automatic revision]
     F --> E
     E -- still failing --> G[Flagged for the human]
-    E -- pass --> H[Model verdict<br/>Muse Wonder]
+    E -- pass --> H[Judge verdict<br/>Muse Spark Open via Baseten]
     H --> I[Human approval<br/>dashboard buttons]
     I -- approve --> J[Scheduler gate<br/>refuses unapproved items]
     J --> K[Buffer queue]
@@ -113,7 +113,8 @@ flowchart LR
 
 | Route | Models | Used for |
 |---|---|---|
-| Meta Model API (`api.meta.ai`) | Muse Wonder 1.0 (main), Muse Spark 1.3 (utility) | Plan, drafts, verdicts, report narrative. `PAGEOPS_MAIN_MODEL` switches the main model; verdicts always use Wonder on this route. |
+| Meta Model API (`api.meta.ai`) | Muse Wonder 1.0 (main), Muse Spark 1.3 (utility) | Plan, drafts, report narrative. `PAGEOPS_MAIN_MODEL` switches the main model for cheap dev iterations. |
+| Baseten (`inference.baseten.co`) | Muse Spark Open (open weight) | The judge: brand verdicts and routing decisions at LOW reasoning effort, so a second model judges the main model's drafts. Without a Baseten key, verdicts fall back to the main client. |
 | Baseten (`inference.baseten.co`) | Muse Spark Open (`meta-models/muse-spark-open-1026`) | Optional open-weights route. The same pipeline runs on Meta's open weights; used for the open-weight comparison evidence. Enabled by `BASETEN_API_KEY`. |
 | Mock | Canned outputs | Tests and offline development. The default mode; zero cost. |
 
