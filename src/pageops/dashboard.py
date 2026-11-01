@@ -35,6 +35,7 @@ STATUS_TO_COLUMN: dict[str, str] = {
     "brief": "brief",
     "planned": "planned",
     "drafted": "drafted",
+    "visual_ready": "drafted",
     "checked": "checked",
     "awaiting_approval": "awaiting_approval",
     "approved": "awaiting_approval",
@@ -91,6 +92,22 @@ def _actions(row: dict[str, str]) -> str:
             '<form method="post" action="/action" class="actions">'
             f'<input type="hidden" name="id" value="{item_id}">'
             '<button name="action" value="approve" type="submit">Approve</button>'
+            '<input name="reason" placeholder="Rejection reason (kept on the card)">'
+            '<button name="action" value="reject" type="submit">Reject</button>'
+            "</form>"
+            '<form method="post" action="/action" class="edit">'
+            f'<input type="hidden" name="id" value="{item_id}">'
+            f'<textarea name="draft" rows="3">{draft_text}</textarea>'
+            '<button name="action" value="edit" type="submit">Save edit + re-check</button>'
+            "</form>"
+        )
+    if status == "checked":
+        # Flagged for the human: no Approve (the gate), but the human
+        # can fix the draft or reject it with a reason from the board.
+        draft_text = html.escape(row.get("draft", ""))
+        return (
+            '<form method="post" action="/action" class="actions">'
+            f'<input type="hidden" name="id" value="{item_id}">'
             '<input name="reason" placeholder="Rejection reason (kept on the card)">'
             '<button name="action" value="reject" type="submit">Reject</button>'
             "</form>"
@@ -249,14 +266,9 @@ def make_handler(store: Store):
                     action = form.get("action", "")
                     if action == "run":
                         from .model_client import get_client
-                        from .pipeline import draft_and_check, generate_week
+                        from .pipeline import run_brief
 
-                        rows = {r["id"]: r for r in store.read_dataset("plan")}
-                        brief_text = rows[item_id].get("brief", "")
-                        client = get_client()
-                        for new_row in generate_week(store, client, brief_text):
-                            draft_and_check(store, client, new_row)
-                        store.update_row("plan", item_id, {"status": "planned"})
+                        run_brief(store, get_client(), item_id)
                     elif action == "edit":
                         from .model_client import get_client
                         from .pipeline import edit_item
