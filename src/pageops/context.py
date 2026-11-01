@@ -3,8 +3,8 @@
 One shared store, three layers (see ARCHITECTURE.md). This module
 owns the private layer's files inside the data directory:
 
-  notes/strategist_trends.json  — the Strategist's trend snapshots
-  notes/analyst_history.jsonl   — the Analyst's performance history
+  notes/strategist_trends.json  - the Strategist's trend snapshots
+  notes/analyst_history.jsonl   - the Analyst's performance history
 
 and the long-term loop: the Analyst's history is summarised for the
 Strategist's next plan. The store's write log (writes.log) lives in
