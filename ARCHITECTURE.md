@@ -51,7 +51,7 @@ package, handed up through the approval gate.
 
 | Role | File | JD scope — owns / stops | Skills (reference) | Tools |
 |---|---|---|---|---|
-| Strategist / Researcher | `rss.py`, `pipeline.fetch_trends`, `pipeline.generate_week` | Owns trend + competitor research with sources, and the 7-day plan built on it. Stops: no final copy or visuals, no approvals. Self-check: every claim sourced; plan re-read against brand voice + own numbers | gtm-fleet `content-researcher`; Haines `customer-research` + `content-strategy`; gtm-fleet `campaign-plan` | RSS feeds (5), feedparser, page insights (read-only), metrics store, Meta Model API (Wonder) |
+| Strategist / Researcher | `research.py`, `rss.py`, `pipeline.fetch_trends`, `pipeline.generate_week` | Owns trend + competitor research with sources, and the 7-day plan built on it. Stops: no final copy or visuals, no approvals. Self-check: every claim sourced; plan re-read against brand voice + own numbers | gtm-fleet `content-researcher`; Haines `customer-research` + `content-strategy`; gtm-fleet `campaign-plan` | Agent-Reach web search (optional, when the CLI is installed), RSS feeds (5) as the fallback, feedparser, page insights (read-only), metrics store, Meta Model API (Wonder) |
 | Copywriter | `pipeline.draft_and_check` | Owns captions + hashtags in the brand voice, and the one revision. Stops: cannot pass or approve its own work. Self-check: drafts linted against voice rules + banned phrases before hand-up | Haines `copywriting` + `copy-editing`; owner's Burmese voice skills; social-media-skills | Meta Model API (Wonder), brand voice store |
 | Graphic Designer | `designer.py` (stage being added, M21) | Owns visual production per post (posters, carousels, thumbnails) from brand templates. Stops: never freestyles off-template, writes no copy, redefines no brand assets. Self-check: template compliance (logo, colors, fonts) verified before hand-up | gtm-fleet `brand-designer` pattern; local poster-studio skill | Brand-assets layer (templates, logo, fonts), Meta Model API (Muse Image) inside templates |
 | Brand Checker | `checker.py` + verdict step | The verify role: owns pass/fail per rule (banned phrases, no price/date promises, logo present) with quoted evidence + the model verdict. Stops: never edits, never approves; the rules live in the brand data. Self-check: a verdict without quoted evidence is invalid | gtm-fleet `brand-review`; Expert Panel pattern | Checker code, judge model verdict (Muse Spark Open via Baseten) |
@@ -108,6 +108,7 @@ flowchart LR
 | `scheduler.py` | Scheduling gate plus Buffer client. `schedule_item` raises unless the item's status is `approved`; this is proven by an automated test. Buffer runs in dry-run mode until the live key is wired. |
 | `metrics.py` / `report.py` | Deterministic performance maths and the report narrative, assembled only from computed numbers in goal, strategy, execution, result shape. |
 | `rss.py` | Trend intake from curated feeds; every item keeps its source link. |
+| `research.py` | Research backends for the Strategist: Agent-Reach web search first when the CLI is available, RSS as the fallback. The backend that answered (and the fallback reason, when one happened) is recorded in the trend notes. |
 
 ## Model routing
 
