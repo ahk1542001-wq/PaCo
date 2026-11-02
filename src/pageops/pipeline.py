@@ -87,11 +87,23 @@ def fetch_trends(store=None, feeds_file=None, fetcher=None, limit: int = 5) -> l
         from .rss import fetch_feeds
 
         fetcher = fetch_feeds
-    items = fetcher(feeds_file)[:limit]
+    result = fetcher(feeds_file)
+    source = None
+    if isinstance(result, dict):
+        # A research bundle carries its provenance: which backend
+        # answered, and the fallback reason when one happened.
+        items = result.get("items", [])
+        source = {
+            "backend": result.get("backend", "unknown"),
+            "detail": result.get("detail", ""),
+        }
+    else:
+        items = result
+    items = items[:limit]
     if store is not None:
         from .context import save_trend_notes
 
-        save_trend_notes(store, items)
+        save_trend_notes(store, items, source=source)
     return items
 
 
