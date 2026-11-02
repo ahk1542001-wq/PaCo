@@ -163,8 +163,9 @@ doubles as the demo's audit evidence.
 ## Running it
 
 ```bash
-./run.sh            # tests + smoke checks
 ./run_dashboard.sh  # dashboard on http://127.0.0.1:8765
+.venv/bin/python -m pytest                      # test suite
+PYTHONPATH=src .venv/bin/python scripts/verify_e2e.py  # end-to-end smoke checks
 ```
 
 Set `MODEL_MODE=meta` with `MODEL_API_KEY` for real model calls;
