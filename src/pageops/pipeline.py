@@ -257,6 +257,50 @@ def schedule_approved(store: Store, row_id: str) -> dict:
     return schedule_item(store, row_id, BufferClient())
 
 
+def link_post(store: Store, row_id: str, post_id: str) -> dict:
+    """Attach the published post's ID to its plan row.
+
+    The scheduling queue ID and the platform post ID are different
+    identifiers; this is the honest join between them, made when
+    the post exists. Only a scheduled row can gain a post.
+    """
+    row = _get_row(store, row_id)
+    if row.get("status") != "scheduled":
+        raise PermissionError(
+            f"Plan item {row_id} has status {row.get('status')!r}; "
+            "only scheduled items can be linked to a published post."
+        )
+    return store.update_row("plan", row["id"], {"post_id": post_id})
+
+
+def report_week(store: Store, goal: str = "", client=None) -> dict:
+    """The Analyst's stage act: build the report and record it.
+
+    Recording means two writes: linked scheduled rows whose posts
+    are in the metrics store become "reported", and the period
+    joins the Analyst's history that feeds the next plan.
+    """
+    from .context import append_analyst_history, save_last_report
+    from .report import build_report
+
+    report = build_report(store, goal=goal, client=client)
+    save_last_report(store, report["narrative"])
+    covered = {r.get("post_id", "") for r in store.read_dataset("metrics")}
+    for row in store.read_dataset("plan"):
+        post_id = row.get("post_id", "")
+        if row.get("status") == "scheduled" and post_id and post_id in covered:
+            store.update_row("plan", row["id"], {"status": "reported"})
+    append_analyst_history(store, report["stats"])
+    return report
+
+
+def last_report(store: Store) -> str:
+    """The latest recorded report narrative ("" until one runs)."""
+    from .context import load_last_report
+
+    return load_last_report(store)
+
+
 def current_report(store: Store) -> dict:
     """The Analyst's report, requested through the pipeline."""
     from .report import build_report
