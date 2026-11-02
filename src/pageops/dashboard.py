@@ -352,12 +352,13 @@ def make_handler(store: Store):
                     if action == "run":
                         from .model_client import MockClient, get_client, get_judge_client
                         from .pipeline import run_brief
-                        from .rss import fetch_feeds
+                        from .research import fetch_research
 
                         client = get_client()
-                        # Live mode researches the live feeds; mock
-                        # mode stays offline and hermetic.
-                        fetcher = None if isinstance(client, MockClient) else fetch_feeds
+                        # Live mode researches first (Agent-Reach
+                        # web search, RSS fallback); mock mode stays
+                        # offline and hermetic.
+                        fetcher = None if isinstance(client, MockClient) else fetch_research
                         run_brief(
                             store,
                             client,
