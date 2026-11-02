@@ -21,9 +21,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from pageops.context import latest_analyst_summary, load_trend_notes  # noqa: E402
 from pageops.model_client import MockClient, get_client  # noqa: E402
-from pageops.pipeline import fetch_trends, process_week  # noqa: E402
 from pageops.metrics import import_metrics  # noqa: E402
-from pageops.pipeline import report_week  # noqa: E402
+from pageops.pipeline import fetch_trends, process_week, report_week  # noqa: E402
 from pageops.scheduler import BufferClient, schedule_item  # noqa: E402
 from pageops.store import Store  # noqa: E402
 
