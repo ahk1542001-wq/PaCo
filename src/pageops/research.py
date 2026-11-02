@@ -110,7 +110,22 @@ def search_agent_reach(queries=QUERIES, limit_per_query: int = 3) -> list[dict]:
     return items
 
 
-def fetch_research(feeds_file=None, queries=QUERIES) -> dict:
+def queries_for_brief(brief: str) -> tuple:
+    """Search queries for one run: the owner's brief first.
+
+    The Strategist searches for what the brief actually asks about,
+    then the standing industry queries fill the remaining slots.
+    Deterministic: the brief text itself leads, no model involved.
+    """
+    brief = " ".join((brief or "").split())[:200]
+    queries = [brief] if brief else []
+    for standing in QUERIES:
+        if standing not in queries:
+            queries.append(standing)
+    return tuple(queries[:3])
+
+
+def fetch_research(feeds_file=None, queries=None, brief: str = "") -> dict:
     """Trend bundle: Agent-Reach first, RSS fallback, provenance kept.
 
     Returns {"items": [...], "backend": "agent-reach" | "rss",
@@ -118,6 +133,8 @@ def fetch_research(feeds_file=None, queries=QUERIES) -> dict:
     fallback is part of the contract, and if even that fails the
     caller (pipeline) treats trends as absent, as before.
     """
+    if queries is None:
+        queries = queries_for_brief(brief)
     try:
         items = search_agent_reach(queries=queries)
         return {
