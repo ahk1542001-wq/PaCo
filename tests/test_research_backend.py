@@ -110,3 +110,38 @@ def test_nonzero_exit_still_reports_the_envelope_reason(tmp_path, monkeypatch):
     assert bundle["backend"] == "rss"
     assert "UPSTREAM_BROKEN" in bundle["detail"]
     assert "exited 1" not in bundle["detail"]
+
+
+def test_queries_for_brief_puts_the_brief_first():
+    queries = research.queries_for_brief("Promote the new chatbot package")
+    assert queries[0] == "Promote the new chatbot package"
+    assert len(queries) == 3
+    assert research.queries_for_brief("") == research.QUERIES
+    assert research.queries_for_brief("   ") == research.QUERIES
+
+
+def test_brief_reaches_the_search_queries(tmp_path, monkeypatch):
+    record = tmp_path / "queries.txt"
+    script = tmp_path / "agent-reach"
+    payload = json.dumps(SEARCH_PAYLOAD).replace("'", "")
+    script.write_text(
+        f"#!/bin/sh\necho \"$3\" >> {record}\nprintf '%s' '{payload}'\n"
+    )
+    script.chmod(script.stat().st_mode | stat.S_IEXEC)
+    monkeypatch.setenv("PAGEOPS_AGENT_REACH_BIN", str(script))
+    bundle = research.fetch_research(brief="Launch the SME chatbot offer")
+    assert bundle["backend"] == "agent-reach"
+    assert "Launch the SME chatbot offer" in record.read_text()
+
+
+def test_fetch_trends_passes_the_brief_and_tolerates_plain_fetchers(tmp_path):
+    def brief_aware(feeds_file=None, brief=""):
+        return [{"source": "S", "title": brief, "link": "L", "summary": ""}]
+
+    items = fetch_trends(fetcher=brief_aware, brief="chatbot launch")
+    assert items[0]["title"] == "chatbot launch"
+
+    def plain(feeds_file=None):
+        return [{"source": "S", "title": "T", "link": "L", "summary": ""}]
+
+    assert fetch_trends(fetcher=plain, brief="ignored")[0]["title"] == "T"
