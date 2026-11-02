@@ -131,6 +131,16 @@ def _actions(row: dict[str, str]) -> str:
             '<button name="action" value="schedule" type="submit">Schedule (dry-run)</button>'
             "</form>"
         )
+    if status == "scheduled":
+        # After the post goes out, the operator links the platform
+        # post ID here; the report stage can then mark it reported.
+        return (
+            '<form method="post" action="/action" class="actions">'
+            f'<input type="hidden" name="id" value="{item_id}">'
+            '<input name="post_id" placeholder="Published post ID">'
+            '<button name="action" value="link" type="submit">Link post</button>'
+            "</form>"
+        )
     return ""
 
 
@@ -156,10 +166,10 @@ def _card(row: dict[str, str]) -> str:
         extras += f'<div class="meta checks">{checks}</div>'
     if row.get("buffer_id"):
         extras += f'<div class="meta">Queue: {html.escape(row["buffer_id"])}</div>'
-    if row.get("brief_check"):
-        extras += f'<div class="meta">Brief check: {html.escape(row["brief_check"])}</div>'
     if row.get("reject_reason"):
         extras += f'<div class="meta">Rejected: {html.escape(row["reject_reason"])}</div>'
+    if row.get("brief_check"):
+        extras += f'<div class="meta">Brief check: {html.escape(row["brief_check"])}</div>'
     return (
         '<div class="card">'
         f'<div class="topic">{html.escape(title)}</div>'
@@ -192,7 +202,11 @@ def render_board(store: Store) -> str:
 
     services = "".join(f"<li>{html.escape(s)}</li>" for s in brand["services"])
     rules = "".join(f"<li>{html.escape(r)}</li>" for r in brand["rules"])
+    from .pipeline import BRAND_KEYS
+
     raw_brand = {r["key"]: r["value"] for r in store.read_dataset("brand_voice")}
+    # Edit forms only for keys the pipeline will accept, so the
+    # render surface and the write surface cannot drift apart.
     edit_forms = "".join(
         '<form method="post" action="/brand" class="brandedit">'
         f'<label>{html.escape(k)}</label>'
@@ -200,6 +214,7 @@ def render_board(store: Store) -> str:
         f'<input name="value" value="{html.escape(v)}">'
         '<button type="submit">Save</button></form>'
         for k, v in raw_brand.items()
+        if k in BRAND_KEYS
     )
     brand_panel = (
         '<section class="panel"><h2>Brand voice</h2>'
@@ -220,12 +235,17 @@ def render_board(store: Store) -> str:
             '<section class="panel"><h2>Latest metrics</h2>'
             f"<table><tr>{head}</tr>{body}</table></section>"
         )
-        from .pipeline import current_report
+        from .pipeline import current_report, last_report
 
-        narrative = html.escape(current_report(store)["narrative"])
+        saved_report = last_report(store)
+        narrative = html.escape(
+            saved_report if saved_report else current_report(store)["narrative"]
+        )
         report_panel = (
             '<section class="panel"><h2>Performance report</h2>'
-            f"<pre>{narrative}</pre></section>"
+            f"<pre>{narrative}</pre>"
+            '<form method="post" action="/report">'
+            '<button type="submit">Run report</button></form></section>'
         )
 
     brief_form = (
@@ -272,14 +292,18 @@ def make_handler(store: Store):
             }
             try:
                 if self.path == "/brief":
-                    from .pipeline import intake_brief
+                    from .pipeline import BRIEF_FIELDS, intake_brief
 
                     fields = {
-                        k: form.get(k, "").strip()
-                        for k in ("goal", "offer", "dates", "notes")
+                        k: form.get(k, "").strip() for k in BRIEF_FIELDS
                     }
                     parts = [v for v in fields.values() if v]
                     intake_brief(store, " | ".join(parts), fields=fields)
+                elif self.path == "/report":
+                    from .model_client import get_client
+                    from .pipeline import report_week
+
+                    report_week(store, client=get_client())
                 elif self.path == "/brand":
                     from .pipeline import update_brand_voice
 
@@ -288,11 +312,9 @@ def make_handler(store: Store):
                     item_id = form.get("id", "")
                     action = form.get("action", "")
                     if action == "run":
-                        from .model_client import MockClient, get_client
+                        from .model_client import MockClient, get_client, get_judge_client
                         from .pipeline import run_brief
                         from .rss import fetch_feeds
-
-                        from .model_client import get_judge_client
 
                         client = get_client()
                         # Live mode researches the live feeds; mock
@@ -328,6 +350,10 @@ def make_handler(store: Store):
                         from .pipeline import schedule_approved
 
                         schedule_approved(store, item_id)
+                    elif action == "link":
+                        from .pipeline import link_post
+
+                        link_post(store, item_id, form.get("post_id", ""))
                     else:
                         raise ValueError(f"Unknown action: {action}")
                 else:
