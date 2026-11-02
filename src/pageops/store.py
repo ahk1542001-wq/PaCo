@@ -39,6 +39,14 @@ BRAND_VOICE_SEED: dict[str, str] = {
         "No real person's name anywhere"
     ),
     "required_hashtags": "#FYFAI; #AIAutomation; #SME",
+    "banned_phrases": (
+        "guaranteed income; guarantee income; get rich; get-rich; "
+        "100% profit; make money fast; risk-free income"
+    ),
+    "cta_markers": (
+        "message us; send us a message; dm us; contact us; get started; "
+        "book a; book your; learn more; sign up; call us; chat with us"
+    ),
 }
 
 
@@ -120,9 +128,15 @@ class Store:
     # -- Convenience helpers -------------------------------------------------
 
     def get_brand_voice(self) -> dict:
-        """Brand voice as a structured dict (lists split on ';')."""
+        """Brand voice as a structured dict (lists split on ';').
+
+        The rule lists (banned_phrases, cta_markers) are included
+        only when the stored value is non-blank: a store that
+        predates those keys gets the checker's fallback defaults,
+        so protection can never be blanked away by accident.
+        """
         raw = {row["key"]: row["value"] for row in self.read_dataset("brand_voice")}
-        return {
+        voice = {
             "brand_name": raw.get("brand_name", ""),
             "services": [s.strip() for s in raw.get("services", "").split(";") if s.strip()],
             "audience": raw.get("audience", ""),
@@ -132,6 +146,10 @@ class Store:
                 h.strip() for h in raw.get("required_hashtags", "").split(";") if h.strip()
             ],
         }
+        for key in ("banned_phrases", "cta_markers"):
+            if raw.get(key, "").strip():
+                voice[key] = [p.strip() for p in raw[key].split(";") if p.strip()]
+        return voice
 
     def add_plan_row(self, row: dict[str, str]) -> dict[str, str]:
         """Append a plan row, assigning a simple incrementing id if absent."""

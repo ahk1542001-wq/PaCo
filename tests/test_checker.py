@@ -9,7 +9,7 @@ BRAND_VOICE = {
 CLEAN_DRAFT = (
     "Your page inbox does not have to eat your whole day. Our chatbot answers "
     "common questions the moment they arrive, and hands the serious chats to you. "
-    "Message us to get started. #FYFAI #AIAutomation"
+    "Message us to get started. #FYFAI #AIAutomation #SME"
 )
 
 # Deliberate violation: a get-rich promise, no CTA, no required hashtag.
