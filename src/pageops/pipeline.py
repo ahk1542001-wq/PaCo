@@ -151,7 +151,7 @@ def _full_text(draft: dict) -> str:
     return text
 
 
-def draft_and_check(store: Store, client, row: dict) -> dict:
+def draft_and_check(store: Store, client, row: dict, judge=None) -> dict:
     """Draft one plan item, run the checker, revise once on failure.
 
     Ends with status awaiting_approval (checks passed) or checked
@@ -173,7 +173,7 @@ def draft_and_check(store: Store, client, row: dict) -> dict:
     # the board's Drafted column and the write log show the real
     # progression instead of a jump from planned to checked.
     store.update_row("plan", row["id"], {"draft": text, "status": "drafted"})
-    summary, status = _review_tail(store, client, item, text, summary, result.passed)
+    summary, status = _review_tail(store, client, item, text, summary, result.passed, judge=judge)
     return store.update_row(
         "plan",
         row["id"],
@@ -182,7 +182,13 @@ def draft_and_check(store: Store, client, row: dict) -> dict:
 
 
 def _review_tail(
-    store: Store, client, item: dict, text: str, summary: str, rules_passed: bool
+    store: Store,
+    client,
+    item: dict,
+    text: str,
+    summary: str,
+    rules_passed: bool,
+    judge=None,
 ) -> tuple[str, str]:
     """Visuals + model verdict for a settled draft text.
 
@@ -209,7 +215,24 @@ def _review_tail(
         # Deterministic rules passed; the judge model gives the
         # judgement verdict. A "revise" verdict flags the card for
         # the human instead of letting it through to approval.
-        verdict = client.verdict({"text": text, "platform": item.get("platform", "")}, summary)
+        # The judge must never be the drafting client itself: a
+        # same-object judge is treated as no judge, so a model can
+        # never end up judging its own output through this path.
+        verdict_client = judge if (judge is not None and judge is not client) else client
+        try:
+            verdict = verdict_client.verdict(
+                {"text": text, "platform": item.get("platform", "")}, summary
+            )
+        except Exception as exc:
+            if verdict_client is client:
+                raise
+            # A failing judge must not strand the run: fall back to
+            # the drafting client's verdict and SAY SO in the
+            # evidence, so the degradation is visible on the card.
+            verdict = client.verdict(
+                {"text": text, "platform": item.get("platform", "")}, summary
+            )
+            summary += f"\n[JUDGE FALLBACK] judge error ({exc}); verdict from the drafting client"
         reasons = "; ".join(verdict.get("reasons", []))
         summary += f"\n[MODEL VERDICT] {verdict.get('verdict', '')} - {reasons}"
         status = "awaiting_approval" if verdict.get("verdict") == "pass" else "checked"
@@ -258,7 +281,7 @@ def reject_item(store: Store, row_id: str, reason: str = "") -> dict:
     )
 
 
-def edit_item(store: Store, client, row_id: str, new_text: str) -> dict:
+def edit_item(store: Store, client, row_id: str, new_text: str, judge=None) -> dict:
     """Apply a human edit, then re-check AND re-verdict the new text.
 
     Editing is a pre-approval act: approved or scheduled content is
@@ -274,7 +297,7 @@ def edit_item(store: Store, client, row_id: str, new_text: str) -> dict:
     result = check_draft(new_text, row.get("platform", ""), brand)
     store.update_row("plan", row["id"], {"draft": new_text, "status": "drafted"})
     summary, status = _review_tail(
-        store, client, row, new_text, result.summary(), result.passed
+        store, client, row, new_text, result.summary(), result.passed, judge=judge
     )
     return store.update_row(
         "plan", row["id"], {"check_status": summary, "status": status}
@@ -304,7 +327,7 @@ def link_post(store: Store, row_id: str, post_id: str) -> dict:
     return store.update_row("plan", row["id"], {"post_id": post_id})
 
 
-def report_week(store: Store, client=None, goal: str = "") -> dict:
+def report_week(store: Store, goal: str = "", client=None) -> dict:
     """The Analyst's stage act: build the report and record it.
 
     Recording means two writes: linked scheduled rows whose posts
@@ -318,7 +341,8 @@ def report_week(store: Store, client=None, goal: str = "") -> dict:
     save_last_report(store, report["narrative"])
     covered = {r.get("post_id", "") for r in store.read_dataset("metrics")}
     for row in store.read_dataset("plan"):
-        if row.get("status") == "scheduled" and row.get("post_id") in covered and row.get("post_id"):
+        post_id = row.get("post_id", "")
+        if row.get("status") == "scheduled" and post_id and post_id in covered:
             store.update_row("plan", row["id"], {"status": "reported"})
     append_analyst_history(store, report["stats"])
     return report
@@ -338,7 +362,9 @@ def current_report(store: Store) -> dict:
     return build_report(store)
 
 
-def run_brief(store: Store, client, brief_row_id: str, trends_fetcher=None) -> list[dict]:
+def run_brief(
+    store: Store, client, brief_row_id: str, trends_fetcher=None, judge=None
+) -> list[dict]:
     """Run the pipeline for one brief card already on the board.
 
     The dashboard's Run action goes through here, so the sequence
@@ -348,16 +374,16 @@ def run_brief(store: Store, client, brief_row_id: str, trends_fetcher=None) -> l
     brief_row = _get_row(store, brief_row_id)
     trends = _trends_for(store, trends_fetcher)
     rows = generate_week(store, client, brief_row.get("brief", ""), trends=trends)
-    drafted = [draft_and_check(store, client, row) for row in rows]
+    drafted = [draft_and_check(store, client, row, judge=judge) for row in rows]
     store.update_row("plan", brief_row["id"], {"status": "planned"})
     return drafted
 
 
 def process_week(
-    store: Store, client, brief_text: str, trends_fetcher=None
+    store: Store, client, brief_text: str, trends_fetcher=None, judge=None
 ) -> list[dict]:
     """Full mock-safe run: brief, research, plan, draft + check each post."""
     intake_brief(store, brief_text)
     trends = _trends_for(store, trends_fetcher)
     rows = generate_week(store, client, brief_text, trends=trends)
-    return [draft_and_check(store, client, row) for row in rows]
+    return [draft_and_check(store, client, row, judge=judge) for row in rows]

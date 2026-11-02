@@ -26,7 +26,9 @@ MODEL_WONDER = "muse-wonder-1.0"
 MODEL_SPARK_OPEN = "meta-models/muse-spark-open-1026"
 
 # Muse Wonder is the product's main LLM (owner's decision, 2026-11-01):
-# plan, drafts, report narrative and verdicts all run on Wonder. Spark
+# plan, drafts and the report narrative run on Wonder; verdicts
+# run on the judge (Spark Open via Baseten) when configured, and
+# fall back to Wonder only when no judge is configured
 # stays available for light utility calls where its lower cost matters.
 
 
@@ -65,6 +67,9 @@ class MetaModelClient:
         # to muse-spark-1.3 for cheap development iterations.
         self.main_model = os.environ.get("PAGEOPS_MAIN_MODEL") or MODEL_WONDER
         self.verdict_model = MODEL_WONDER
+        # Set by the Baseten factory: verdict-style calls measure best
+        # at LOW reasoning effort. None means the parameter is not sent.
+        self.reasoning_effort: str | None = None
 
     def chat(self, messages: list[dict], model: str = MODEL_WONDER, **kwargs) -> dict:
         if not self.api_key:
@@ -77,7 +82,12 @@ class MetaModelClient:
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
             },
-            json={"model": model, "messages": messages, **kwargs},
+            json={
+                "model": model,
+                "messages": messages,
+                **({"reasoning_effort": self.reasoning_effort} if self.reasoning_effort else {}),
+                **kwargs,
+            },
             timeout=120.0,
         )
         response.raise_for_status()
@@ -266,4 +276,16 @@ def get_baseten_client(api_key: str | None = None, usage_log: Path | str | None 
     client = MetaModelClient(api_key=key, usage_log=usage_log, base_url=BASETEN_BASE_URL)
     client.main_model = MODEL_SPARK_OPEN
     client.verdict_model = MODEL_SPARK_OPEN
+    client.reasoning_effort = "low"
     return client
+
+
+def get_judge_client():
+    """The decision/judge model: Muse Spark Open via Baseten.
+
+    A second model judging the main model's drafts (the owner's
+    Model map designation). Returns None when no Baseten key is
+    configured; callers then fall back to the drafting client's
+    verdict, so the pipeline never depends on the judge existing.
+    """
+    return get_baseten_client()
