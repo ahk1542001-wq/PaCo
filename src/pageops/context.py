@@ -28,8 +28,12 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def save_trend_notes(store, trends: list[dict]) -> None:
+def save_trend_notes(store, trends: list[dict], source: dict | None = None) -> None:
     payload = {"saved_at": _now(), "items": trends}
+    if source is not None:
+        # Provenance is part of the snapshot: which research backend
+        # produced these trends, and why, is never left implicit.
+        payload["source"] = source
     (_notes_dir(store) / "strategist_trends.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8"
     )
