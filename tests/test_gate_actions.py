@@ -173,3 +173,41 @@ def test_dashboard_reject_records_reason(tmp_path):
         assert reread["reject_reason"] == "Wrong offer"
     finally:
         server.shutdown()
+
+
+def test_approve_form_carries_no_reason_input(tmp_path):
+    # Standards review (PR #5): Enter in the reason field must never
+    # be able to submit an approval. The approve form stands alone.
+    from pageops.dashboard import render_board
+
+    store = Store(tmp_path)
+    store.add_plan_row({"topic": "T", "status": "awaiting_approval", "draft": "D"})
+    board = render_board(store)
+    # Segment the board into whole forms, then judge each form by
+    # everything inside it, through its closing tag. (The earlier
+    # version of this test only looked before the Approve button and
+    # passed on the vulnerable single-form layout; the Spec review
+    # proved that empirically, so the pin now covers the full form.)
+    forms = board.split("<form")[1:]
+    approve_forms = [f for f in forms if 'value="approve"' in f]
+    reject_forms = [f for f in forms if 'value="reject"' in f]
+    assert len(approve_forms) == 1
+    assert 'name="reason"' not in approve_forms[0]
+    assert any('name="reason"' in f for f in reject_forms)
+
+
+def test_dashboard_happy_path_approve_then_schedule(tmp_path):
+    store = Store(tmp_path)
+    row = store.add_plan_row(
+        {"topic": "T", "status": "awaiting_approval", "draft": "Clean. Message us."}
+    )
+    server, base = _start(store)
+    try:
+        assert _post(base + "/action", {"id": row["id"], "action": "approve"}) == 200
+        assert store.read_dataset("plan")[0]["status"] == "approved"
+        assert _post(base + "/action", {"id": row["id"], "action": "schedule"}) == 200
+        final = store.read_dataset("plan")[0]
+        assert final["status"] == "scheduled"
+        assert final["buffer_id"] == f"dry-run-{row['id']}"
+    finally:
+        server.shutdown()

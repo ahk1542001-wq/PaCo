@@ -88,10 +88,17 @@ def _actions(row: dict[str, str]) -> str:
         )
     if status == "awaiting_approval":
         draft_text = html.escape(row.get("draft", ""))
+        # Approve and Reject are SEPARATE forms on purpose: with both
+        # buttons in one form, pressing Enter in the reason input
+        # submits via the first button and approves by accident
+        # (Standards review of PR #5). The reason lives with Reject.
         return (
             '<form method="post" action="/action" class="actions">'
             f'<input type="hidden" name="id" value="{item_id}">'
             '<button name="action" value="approve" type="submit">Approve</button>'
+            "</form>"
+            '<form method="post" action="/action" class="actions">'
+            f'<input type="hidden" name="id" value="{item_id}">'
             '<input name="reason" placeholder="Rejection reason (kept on the card)">'
             '<button name="action" value="reject" type="submit">Reject</button>'
             "</form>"
