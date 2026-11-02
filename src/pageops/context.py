@@ -69,3 +69,18 @@ def latest_analyst_summary(store) -> str:
         f"Last period: reach {last['reach']}, engagement {last['engagement']}, "
         f"clicks {last['clicks']} across {last['posts']} posts."
     )
+
+
+def save_last_report(store, narrative: str) -> None:
+    """Persist the latest recorded report narrative (Analyst layer)."""
+    path = store.data_dir / "notes" / "last_report.txt"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(narrative, encoding="utf-8")
+
+
+def load_last_report(store) -> str:
+    """The latest recorded report narrative, or "" if none ran yet."""
+    path = store.data_dir / "notes" / "last_report.txt"
+    if not path.exists():
+        return ""
+    return path.read_text(encoding="utf-8")

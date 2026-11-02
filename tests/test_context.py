@@ -56,14 +56,16 @@ def test_analyst_history_and_summary(tmp_path):
     assert json.loads(lines[0])["reach"] == 170
 
 
-def test_build_report_appends_history(tmp_path):
+def test_report_week_appends_history(tmp_path):
     store = Store(tmp_path)
     store.append_row(
         "metrics",
         {"date": "2026-08-20", "platform": "facebook", "post_id": "p1",
          "reach": "36", "engagement": "5", "clicks": "0", "notes": ""},
     )
-    build_report(store)
+    from pageops.pipeline import report_week
+
+    report_week(store, client=MockClient())
     assert latest_analyst_summary(store) != ""
 
 

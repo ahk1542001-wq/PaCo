@@ -125,6 +125,27 @@ class MetaModelClient:
             self.verdict_model,
         )
 
+    def narrate(self, stats: dict, brand_voice: dict) -> str:
+        """Interpret computed stats in prose. Figures come from stats only."""
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are PageOps Agent's performance analyst. Write two or "
+                    "three plain sentences interpreting the numbers you are "
+                    "given. Never invent a figure that is not in the input."
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {"stats": stats, "brand": brand_voice.get("brand_name", "")}
+                ),
+            },
+        ]
+        result = self.chat(messages, model=self.main_model)
+        return result["choices"][0]["message"]["content"].strip()
+
 
 class MockClient:
     """Canned structured outputs. Deterministic, offline, free."""
@@ -202,6 +223,17 @@ class MockClient:
             "text": text,
             "hashtags": ["#FYFAI", "#AIAutomation", "#SME"],
         }
+
+    def narrate(self, stats: dict, brand_voice: dict) -> str:
+        totals = stats.get("totals", {})
+        best = stats.get("best_post") or {}
+        return (
+            f"across {totals.get('posts', 0)} tracked posts the page earned "
+            f"{totals.get('reach', 0)} reach and {totals.get('engagement', 0)} "
+            f"engagement; the strongest post was {best.get('post_id', 'n/a')} "
+            f"with {best.get('engagement', 0)} engagement, so its angle leads "
+            "the next plan."
+        )
 
     def verdict(self, draft: dict, check_summary: str) -> dict:
         passed = "[FAIL]" not in check_summary
