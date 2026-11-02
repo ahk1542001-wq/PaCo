@@ -77,7 +77,9 @@ def update_brand_voice(store: Store, key: str, value: str) -> None:
     store.set_brand_value(key, value)
 
 
-def fetch_trends(store=None, feeds_file=None, fetcher=None, limit: int = 5) -> list[dict]:
+def fetch_trends(
+    store=None, feeds_file=None, fetcher=None, limit: int = 5, brief: str = ""
+) -> list[dict]:
     """Trend items with source links. Network only via the real fetcher.
 
     When a store is given, the fetched trends are snapshotted into
@@ -87,7 +89,12 @@ def fetch_trends(store=None, feeds_file=None, fetcher=None, limit: int = 5) -> l
         from .rss import fetch_feeds
 
         fetcher = fetch_feeds
-    result = fetcher(feeds_file)
+    try:
+        # Brief-aware fetchers (the research backend) search for
+        # what the brief asks about; plain feed fetchers ignore it.
+        result = fetcher(feeds_file, brief=brief)
+    except TypeError:
+        result = fetcher(feeds_file)
     source = None
     if isinstance(result, dict):
         # A research bundle carries its provenance: which backend
@@ -107,7 +114,7 @@ def fetch_trends(store=None, feeds_file=None, fetcher=None, limit: int = 5) -> l
     return items
 
 
-def _trends_for(store: Store, trends_fetcher) -> list | None:
+def _trends_for(store: Store, trends_fetcher, brief: str = "") -> list | None:
     """Fetch + snapshot trends when a fetcher is supplied.
 
     Trends are an input, never a gate: a dead feed returns None and
@@ -116,7 +123,7 @@ def _trends_for(store: Store, trends_fetcher) -> list | None:
     if trends_fetcher is None:
         return None
     try:
-        return fetch_trends(store=store, fetcher=trends_fetcher)
+        return fetch_trends(store=store, fetcher=trends_fetcher, brief=brief)
     except Exception:
         return None
 
@@ -384,7 +391,7 @@ def run_brief(
     assembled by the orchestrator, never by the handler.
     """
     brief_row = _get_row(store, brief_row_id)
-    trends = _trends_for(store, trends_fetcher)
+    trends = _trends_for(store, trends_fetcher, brief=brief_row.get("brief", ""))
     rows = generate_week(store, client, brief_row.get("brief", ""), trends=trends)
     drafted = [draft_and_check(store, client, row, judge=judge) for row in rows]
     store.update_row("plan", brief_row["id"], {"status": "planned"})
@@ -396,6 +403,6 @@ def process_week(
 ) -> list[dict]:
     """Full mock-safe run: brief, research, plan, draft + check each post."""
     intake_brief(store, brief_text)
-    trends = _trends_for(store, trends_fetcher)
+    trends = _trends_for(store, trends_fetcher, brief=brief_text)
     rows = generate_week(store, client, brief_text, trends=trends)
     return [draft_and_check(store, client, row, judge=judge) for row in rows]
