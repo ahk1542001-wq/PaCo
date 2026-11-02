@@ -7,6 +7,12 @@ approval gate that the code itself enforces. The demo brand is FYF AI.
 
 ## Shape: a small marketing company — one CEO, two departments, six roles
 
+Each role's standing definition (its soul: what it owns, where it
+stops, how it checks its own work, its skills, tools and model)
+lives in `roles/`: ceo, strategist, copywriter, designer,
+brand-checker, scheduler, analyst. Those files are the canonical
+role definitions; this document describes how they are wired.
+
 PageOps runs like a small digital-marketing company, not one
 monolithic agent. A **CEO orchestrator** (`pipeline.py`) controls the
 team: it assigns work down the pipeline, enforces the human-approval
