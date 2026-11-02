@@ -41,9 +41,40 @@ from .designer import produce_visual
 from .store import Store
 
 
-def intake_brief(store: Store, brief_text: str) -> dict:
-    """Record an incoming brief as a plan row in the Brief column."""
-    return store.add_plan_row({"status": "brief_received", "brief": brief_text})
+BRIEF_FIELDS = ("goal", "offer", "dates", "notes")
+
+BRAND_KEYS = (
+    "brand_name", "services", "audience", "tone", "rules",
+    "required_hashtags", "banned_phrases", "cta_markers",
+)
+
+
+def intake_brief(store: Store, brief_text: str, fields: dict | None = None) -> dict:
+    """Record an incoming brief as a plan row in the Brief column.
+
+    With form fields, the brief is also restated in structured form
+    on the row (brief_check), with anything missing flagged by name,
+    so a thin brief is visible before the pipeline spends on it.
+    """
+    row = {"status": "brief_received", "brief": brief_text}
+    if fields is not None:
+        present, missing = [], []
+        for key in BRIEF_FIELDS:
+            value = (fields.get(key) or "").strip()
+            if value:
+                present.append(f"{key.capitalize()}: {value}")
+            else:
+                missing.append(key)
+        parts = present + [f"missing: {key}" for key in missing]
+        row["brief_check"] = " | ".join(parts)
+    return store.add_plan_row(row)
+
+
+def update_brand_voice(store: Store, key: str, value: str) -> None:
+    """Edit the brand-assets layer as data, through the pipeline."""
+    if key not in BRAND_KEYS:
+        raise ValueError(f"Unknown brand voice key: {key}")
+    store.set_brand_value(key, value)
 
 
 def fetch_trends(store=None, feeds_file=None, fetcher=None, limit: int = 5) -> list[dict]:
@@ -273,7 +304,7 @@ def link_post(store: Store, row_id: str, post_id: str) -> dict:
     return store.update_row("plan", row["id"], {"post_id": post_id})
 
 
-def report_week(store: Store, goal: str = "", client=None) -> dict:
+def report_week(store: Store, client=None, goal: str = "") -> dict:
     """The Analyst's stage act: build the report and record it.
 
     Recording means two writes: linked scheduled rows whose posts
@@ -287,8 +318,7 @@ def report_week(store: Store, goal: str = "", client=None) -> dict:
     save_last_report(store, report["narrative"])
     covered = {r.get("post_id", "") for r in store.read_dataset("metrics")}
     for row in store.read_dataset("plan"):
-        post_id = row.get("post_id", "")
-        if row.get("status") == "scheduled" and post_id and post_id in covered:
+        if row.get("status") == "scheduled" and row.get("post_id") in covered and row.get("post_id"):
             store.update_row("plan", row["id"], {"status": "reported"})
     append_analyst_history(store, report["stats"])
     return report
