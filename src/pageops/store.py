@@ -17,7 +17,7 @@ from pathlib import Path
 DATASETS: dict[str, list[str]] = {
     "brand_voice": ["key", "value"],
     "plan": [
-        "id", "date", "platform", "topic", "angle", "format", "status", "brief",
+        "id", "date", "platform", "topic", "angle", "format", "status", "brief", "brief_check",
         "draft", "check_status", "visual", "reject_reason", "post_id", "buffer_id",
     ],
     "metrics": ["date", "platform", "post_id", "reach", "engagement", "clicks", "notes"],
@@ -127,8 +127,25 @@ class Store:
 
     # -- Convenience helpers -------------------------------------------------
 
+    def set_brand_value(self, key: str, value: str) -> None:
+        """Set one brand voice key (the brand-assets layer is data)."""
+        rows = self.read_dataset("brand_voice")
+        for row in rows:
+            if row.get("key") == key:
+                row["value"] = value
+                self.write_dataset("brand_voice", rows)
+                return
+        rows.append({"key": key, "value": value})
+        self.write_dataset("brand_voice", rows)
+
     def get_brand_voice(self) -> dict:
-        """Brand voice as a structured dict (lists split on ';')."""
+        """Brand voice as a structured dict (lists split on ';').
+
+        The rule lists (banned_phrases, cta_markers) are included
+        only when the stored value is non-blank: a store that
+        predates those keys gets the checker's fallback defaults,
+        so protection can never be blanked away by accident.
+        """
         raw = {row["key"]: row["value"] for row in self.read_dataset("brand_voice")}
         voice = {
             "brand_name": raw.get("brand_name", ""),
