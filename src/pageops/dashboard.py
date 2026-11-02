@@ -49,6 +49,7 @@ body { font-family: system-ui, sans-serif; margin: 0; background: #0f1420; color
 header { padding: 16px 24px; background: #16203a; }
 header h1 { margin: 0; font-size: 22px; }
 header p { margin: 4px 0 0; color: #9fb0d0; font-size: 13px; }
+.poster { max-width: 100%; border-radius: 8px; margin: 6px 0; display: block; }
 .board { display: flex; gap: 12px; padding: 16px 24px; overflow-x: auto; align-items: flex-start; }
 .col { background: #1a2438; border-radius: 10px; padding: 10px; min-width: 190px; flex: 1; }
 .col h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #9fb0d0; margin: 2px 2px 10px; }
@@ -166,10 +167,16 @@ def _card(row: dict[str, str]) -> str:
         extras += f'<div class="meta checks">{checks}</div>'
     if row.get("buffer_id"):
         extras += f'<div class="meta">Queue: {html.escape(row["buffer_id"])}</div>'
-    if row.get("reject_reason"):
-        extras += f'<div class="meta">Rejected: {html.escape(row["reject_reason"])}</div>'
+    if row.get("visual"):
+        name = row["visual"].split("/")[-1]
+        extras += (
+            f'<img class="poster" src="/visual/{html.escape(name)}" '
+            'alt="Post visual">'
+        )
     if row.get("brief_check"):
         extras += f'<div class="meta">Brief check: {html.escape(row["brief_check"])}</div>'
+    if row.get("reject_reason"):
+        extras += f'<div class="meta">Rejected: {html.escape(row["reject_reason"])}</div>'
     return (
         '<div class="card">'
         f'<div class="topic">{html.escape(title)}</div>'
@@ -235,9 +242,14 @@ def render_board(store: Store) -> str:
             '<section class="panel"><h2>Latest metrics</h2>'
             f"<table><tr>{head}</tr>{body}</table></section>"
         )
-        from .pipeline import current_report, last_report
 
-        saved_report = last_report(store)
+    from .pipeline import current_report, last_report
+
+    saved_report = last_report(store)
+    if metrics_rows or saved_report:
+        # The panel prefers the last RECORDED report (which carries
+        # the model's figure-checked Read); before any run it shows
+        # the pure computed report. Rendering never calls a model.
         narrative = html.escape(
             saved_report if saved_report else current_report(store)["narrative"]
         )
@@ -275,6 +287,32 @@ def render_board(store: Store) -> str:
 def make_handler(store: Store):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):  # noqa: N802 (stdlib naming)
+            if self.path.startswith("/visual/"):
+                from pathlib import Path as _Path
+                from urllib.parse import unquote as _unquote
+
+                name = _unquote(self.path[len("/visual/"):])
+                # Only poster files directly under visuals/, no traversal.
+                visuals_dir = (store.data_dir / "visuals").resolve()
+                target = visuals_dir / name
+                if (
+                    name != _Path(name).name
+                    or not name.endswith(".png")
+                    or not target.exists()
+                    # Containment is structural: a symlink inside
+                    # visuals/ pointing outside is refused too.
+                    or visuals_dir not in target.resolve().parents
+                ):
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                data = target.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "image/png")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
             body = render_board(store).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
