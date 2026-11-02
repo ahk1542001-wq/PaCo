@@ -161,6 +161,8 @@ def _card(row: dict[str, str]) -> str:
         extras += f'<div class="meta">Queue: {html.escape(row["buffer_id"])}</div>'
     if row.get("reject_reason"):
         extras += f'<div class="meta">Rejected: {html.escape(row["reject_reason"])}</div>'
+    if row.get("brief_check"):
+        extras += f'<div class="meta">Brief check: {html.escape(row["brief_check"])}</div>'
     return (
         '<div class="card">'
         f'<div class="topic">{html.escape(title)}</div>'
@@ -193,11 +195,25 @@ def render_board(store: Store) -> str:
 
     services = "".join(f"<li>{html.escape(s)}</li>" for s in brand["services"])
     rules = "".join(f"<li>{html.escape(r)}</li>" for r in brand["rules"])
+    from .pipeline import BRAND_KEYS
+
+    raw_brand = {r["key"]: r["value"] for r in store.read_dataset("brand_voice")}
+    # Edit forms only for keys the pipeline will accept, so the
+    # render surface and the write surface cannot drift apart.
+    edit_forms = "".join(
+        '<form method="post" action="/brand" class="brandedit">'
+        f'<label>{html.escape(k)}</label>'
+        f'<input type="hidden" name="key" value="{html.escape(k)}">'
+        f'<input name="value" value="{html.escape(v)}">'
+        '<button type="submit">Save</button></form>'
+        for k, v in raw_brand.items()
+        if k in BRAND_KEYS
+    )
     brand_panel = (
         '<section class="panel"><h2>Brand voice</h2>'
         f"<div>Audience: {html.escape(brand['audience'])}</div>"
         f"<div>Tone: {html.escape(brand['tone'])}</div>"
-        f"<ul>{services}</ul><ul>{rules}</ul></section>"
+        f"<ul>{services}</ul><ul>{rules}</ul>{edit_forms}</section>"
     )
 
     metrics_panel = ""
@@ -269,18 +285,22 @@ def make_handler(store: Store):
             }
             try:
                 if self.path == "/brief":
-                    from .pipeline import intake_brief
+                    from .pipeline import BRIEF_FIELDS, intake_brief
 
-                    parts = [
-                        form.get(k, "").strip()
-                        for k in ("goal", "offer", "dates", "notes")
-                    ]
-                    intake_brief(store, " | ".join(p for p in parts if p))
+                    fields = {
+                        k: form.get(k, "").strip() for k in BRIEF_FIELDS
+                    }
+                    parts = [v for v in fields.values() if v]
+                    intake_brief(store, " | ".join(parts), fields=fields)
                 elif self.path == "/report":
                     from .model_client import get_client
                     from .pipeline import report_week
 
                     report_week(store, client=get_client())
+                elif self.path == "/brand":
+                    from .pipeline import update_brand_voice
+
+                    update_brand_voice(store, form.get("key", ""), form.get("value", ""))
                 elif self.path == "/action":
                     item_id = form.get("id", "")
                     action = form.get("action", "")
