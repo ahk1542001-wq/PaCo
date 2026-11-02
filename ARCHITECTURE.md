@@ -54,7 +54,7 @@ package, handed up through the approval gate.
 | Strategist / Researcher | `rss.py`, `pipeline.fetch_trends`, `pipeline.generate_week` | Owns trend + competitor research with sources, and the 7-day plan built on it. Stops: no final copy or visuals, no approvals. Self-check: every claim sourced; plan re-read against brand voice + own numbers | gtm-fleet `content-researcher`; Haines `customer-research` + `content-strategy`; gtm-fleet `campaign-plan` | RSS feeds (5), feedparser, page insights (read-only), metrics store, Meta Model API (Wonder) |
 | Copywriter | `pipeline.draft_and_check` | Owns captions + hashtags in the brand voice, and the one revision. Stops: cannot pass or approve its own work. Self-check: drafts linted against voice rules + banned phrases before hand-up | Haines `copywriting` + `copy-editing`; owner's Burmese voice skills; social-media-skills | Meta Model API (Wonder), brand voice store |
 | Graphic Designer | `designer.py` (stage being added, M21) | Owns visual production per post (posters, carousels, thumbnails) from brand templates. Stops: never freestyles off-template, writes no copy, redefines no brand assets. Self-check: template compliance (logo, colors, fonts) verified before hand-up | gtm-fleet `brand-designer` pattern; local poster-studio skill | Brand-assets layer (templates, logo, fonts), Meta Model API (Muse Image) inside templates |
-| Brand Checker | `checker.py` + verdict step | The verify role: owns pass/fail per rule (banned phrases, no price/date promises, logo present) with quoted evidence + the model verdict. Stops: never edits, never approves; rules are code. Self-check: a verdict without quoted evidence is invalid | gtm-fleet `brand-review`; Expert Panel pattern | Checker code, Meta Model API (Wonder verdict) |
+| Brand Checker | `checker.py` + verdict step | The verify role: owns pass/fail per rule (banned phrases, no price/date promises, logo present) with quoted evidence + the model verdict. Stops: never edits, never approves; the rules live in the brand data. Self-check: a verdict without quoted evidence is invalid | gtm-fleet `brand-review`; Expert Panel pattern | Checker code, judge model verdict (Muse Spark Open via Baseten) |
 
 **Brand-assets layer.** Department 1 owns the single brand source
 every role consumes: colors, logo files, fonts, templates, voice
@@ -84,7 +84,7 @@ flowchart LR
     E -- fail --> F[One automatic revision]
     F --> E
     E -- still failing --> G[Flagged for the human]
-    E -- pass --> H[Model verdict<br/>Muse Wonder]
+    E -- pass --> H[Judge verdict<br/>Muse Spark Open via Baseten]
     H --> I[Human approval<br/>dashboard buttons]
     I -- approve --> J[Scheduler gate<br/>refuses unapproved items]
     J --> K[Buffer queue]
@@ -102,7 +102,7 @@ flowchart LR
 | `dashboard.py` | The only interface. Brief form, kanban board (Brief, Planned, Drafted, Checked, Awaiting approval, Scheduled, Reported), approve / edit / reject / schedule actions. Server-rendered, no build step. |
 | `pipeline.py` | Orchestrates the stages: intake, trends, plan, draft-and-check with one revision, verdict. |
 | `model_client.py` | Model access. `MetaModelClient` for the Meta Model API, an optional Baseten route for open weights, and `MockClient` so the whole system runs offline in tests. Every real call is written to a JSON-lines usage log. |
-| `checker.py` | Deterministic brand-rule checks in pure code: banned phrases, CTA present, platform length caps, required hashtag. Every verdict quotes the draft's own lines as evidence. |
+| `checker.py` | Deterministic brand-rule checks: the rules themselves (banned phrases, CTA markers, required hashtags) are read from the brand data; the enforcement is pure code. Platform length caps stay in code as platform facts. Every verdict quotes the draft's own lines as evidence. |
 | `store.py` | CSV store that mirrors the Google Sheets schema (Brand Voice, Plan, Metrics). The board reads the same store the pipeline writes, so the UI is live truth. |
 | `sheets_sync.py` | One-way push of the three datasets to Google Sheets for sharing and inspection. |
 | `scheduler.py` | Scheduling gate plus Buffer client. `schedule_item` raises unless the item's status is `approved`; this is proven by an automated test. Buffer runs in dry-run mode until the live key is wired. |
@@ -113,8 +113,8 @@ flowchart LR
 
 | Route | Models | Used for |
 |---|---|---|
-| Meta Model API (`api.meta.ai`) | Muse Wonder 1.0 (main), Muse Spark 1.3 (utility) | Plan, drafts, verdicts, report narrative. `PAGEOPS_MAIN_MODEL` switches the main model; verdicts always use Wonder on this route. |
-| Baseten (`inference.baseten.co`) | Muse Spark Open (`meta-models/muse-spark-open-1026`) | Optional open-weights route. The same pipeline runs on Meta's open weights; used for the open-weight comparison evidence. Enabled by `BASETEN_API_KEY`. |
+| Meta Model API (`api.meta.ai`) | Muse Wonder 1.0 (main), Muse Spark 1.3 (utility) | Plan, drafts, report narrative. `PAGEOPS_MAIN_MODEL` switches the main model for cheap dev iterations. |
+| Baseten (`inference.baseten.co`) | Muse Spark Open (`meta-models/muse-spark-open-1026`, open weight) | The judge: brand verdicts at LOW reasoning effort, so a second model judges the main model's drafts (the verdict drives the deterministic pass / revise / flag routing in code). The same route also runs the pipeline on open weights for the open-weight comparison evidence. Enabled by `BASETEN_API_KEY`; without a key, verdicts fall back to the main client. |
 | Mock | Canned outputs | Tests and offline development. The default mode; zero cost. |
 
 ## Trust and safety design
@@ -163,9 +163,8 @@ doubles as the demo's audit evidence.
 ## Running it
 
 ```bash
+./run.sh            # tests + smoke checks
 ./run_dashboard.sh  # dashboard on http://127.0.0.1:8765
-.venv/bin/python -m pytest                      # test suite
-PYTHONPATH=src .venv/bin/python scripts/verify_e2e.py  # end-to-end smoke checks
 ```
 
 Set `MODEL_MODE=meta` with `MODEL_API_KEY` for real model calls;
