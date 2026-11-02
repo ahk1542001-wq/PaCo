@@ -195,12 +195,12 @@ class MockClient:
         text = (
             f"{topic}. We built this for SME owners who sell through their page and "
             "cannot sit in the inbox all day. Message us to get started, and we will "
-            "map the first step with you. #FYFAI #AIAutomation"
+            "map the first step with you. #FYFAI #AIAutomation #SME"
         )
         return {
             "platform": plan_item.get("platform", "facebook"),
             "text": text,
-            "hashtags": ["#FYFAI", "#AIAutomation"],
+            "hashtags": ["#FYFAI", "#AIAutomation", "#SME"],
         }
 
     def verdict(self, draft: dict, check_summary: str) -> dict:
