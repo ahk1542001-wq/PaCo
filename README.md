@@ -10,16 +10,29 @@ AI-automation services page for Myanmar and Thai SME owners.
 
 Built during the **Meta Global AI Developer Hackathon (November
 2026)** on the Meta Model API: **Muse Wonder** is the main LLM (plan,
-drafts, verdicts), with Muse Spark available for light utility calls.
-An optional open-weights route serves **Muse Spark Open** through
-Baseten (`BASETEN_API_KEY`), so the same pipeline can run on Meta's
-open weights when wanted.
+drafts, report narrative), with Muse Spark available for light
+utility calls. Brand verdicts are judged by **Muse Spark Open**
+through Baseten (`BASETEN_API_KEY`) when configured, an open-weights
+route on Meta's own model, falling back to Wonder when it is not.
+
+## Built during the event window
+
+All code in this repository was written during the event window
+(26 Oct to 4 Nov 2026); the first commit is dated 1 Nov 2026 and
+the git history is the audit trail. What existed before the event
+is data and brand, not code: the FYF AI page and brand (the demo
+brand), its brand-voice profile, and its past performance metrics.
+Third-party building blocks are declared dependencies (httpx,
+feedparser, Pillow) and the Padauk font. No pre-existing project
+code is included or presented as new.
 
 ## Pipeline
 
 1. **Brief** - a short form on the dashboard (goal, offer, dates).
-2. **Trend research** - curated RSS/news feeds plus the brand's own
-   past performance; every trend item keeps its source link.
+2. **Trend research** - Agent-Reach web search when available,
+   curated RSS/news feeds as the fallback, plus the brand's own
+   past performance; every trend item keeps its source link, and
+   the trend notes record which backend served them.
 3. **Content plan** - a 7-day plan written against the brand-voice
    profile, shown as cards on a kanban board.
 4. **Drafts with brand-rule checks** - every draft is checked by a
