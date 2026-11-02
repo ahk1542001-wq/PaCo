@@ -66,7 +66,7 @@ class MetaModelClient:
         self.main_model = os.environ.get("PAGEOPS_MAIN_MODEL") or MODEL_WONDER
         self.verdict_model = MODEL_WONDER
 
-    def chat(self, messages: list[dict], model: str = MODEL_SPARK, **kwargs) -> dict:
+    def chat(self, messages: list[dict], model: str = MODEL_WONDER, **kwargs) -> dict:
         if not self.api_key:
             raise RuntimeError("MODEL_API_KEY is not set; cannot call the Meta Model API.")
         import httpx  # imported lazily so mock mode never needs the package

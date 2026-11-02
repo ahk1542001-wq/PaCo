@@ -10,7 +10,7 @@ tools (full spec: ARCHITECTURE.md):
 Every role is self-contained: its own skills, its own tools, its own
 work, and it checks its own work before passing it up.
 
-Department 1 — Content Creation & Branding:
+Department 1 - Content Creation & Branding:
 - Strategist / Researcher (rss.fetch_feeds via fetch_trends, then
   generate_week): feeds + insights -> trends -> 7 plan rows
 - Copywriter (draft_and_check): plan row -> caption + hashtags
@@ -20,7 +20,7 @@ Department 1 — Content Creation & Branding:
 - (Human approval gate; the CEO never crosses it alone. The gate is
   also the department boundary: checked drafts cross into Department 2
   only as the approved content package.)
-Department 2 — Digital Marketing:
+Department 2 - Digital Marketing:
 - Scheduler / Publisher (scheduler.schedule_item): approved -> queue ID
 - Performance Analyst (report.build_report): metrics -> report
 
