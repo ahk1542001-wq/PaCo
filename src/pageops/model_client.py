@@ -24,6 +24,7 @@ BASETEN_BASE_URL = "https://inference.baseten.co/v1"
 MODEL_SPARK = "muse-spark-1.3"
 MODEL_WONDER = "muse-wonder-1.0"
 MODEL_SPARK_OPEN = "meta-models/muse-spark-open-1026"
+MODEL_IMAGE = "muse-image-1.0"
 
 # Muse Wonder is the product's main LLM (owner's decision, 2026-11-01):
 # plan, drafts and the report narrative run on Wonder; verdicts
@@ -123,8 +124,26 @@ class MetaModelClient:
         )
 
     def generate_draft(self, plan_item: dict, brand_voice: dict) -> dict:
+        instruction = (
+            "Write one post caption as JSON: {platform, text, hashtags: []}. "
+            "Follow the brand rules."
+        )
+        if "short video" in (plan_item.get("format") or "").lower():
+            # Wonder directs the video: the draft text IS the
+            # storyboard script, one caption line per beat in the
+            # owner's UGC order (the storyboard adds the hook from
+            # the topic in front of these lines).
+            instruction = (
+                "Write one short-video caption as JSON: {platform, text, hashtags: []}. "
+                "Follow the brand rules. The text is the video script: write it as "
+                "short caption lines, one line per beat, in this exact order: "
+                "line 1 the audience pain point, line 2 the product reveal, "
+                "line 3 a demo of what it does, line 4 honest social proof "
+                "(only claims the brand data supports; never invent results, "
+                "customers or testimonials), and a final call-to-action line."
+            )
         return self._structured(
-            "Write one post caption as JSON: {platform, text, hashtags: []}. Follow the brand rules.",
+            instruction,
             {"plan_item": plan_item, "brand_voice": brand_voice},
             self.main_model,
         )
@@ -156,6 +175,57 @@ class MetaModelClient:
         ]
         result = self.chat(messages, model=self.main_model)
         return result["choices"][0]["message"]["content"].strip()
+
+
+class MetaImageClient:
+    """Image generation on the Meta Model API (Muse Image).
+
+    Used for exactly one thing: the optional scene plate under a
+    short video's reveal scene. Kept separate from MetaModelClient
+    because the images surface is not chat-shaped.
+    """
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        usage_log: Path | str | None = None,
+        base_url: str = BASE_URL,
+    ):
+        self.api_key = api_key or os.environ.get("MODEL_API_KEY") or None
+        self.usage = UsageLogger(usage_log)
+        self.base_url = base_url
+
+    def generate_image_bytes(self, prompt: str) -> bytes:
+        """Generate one image and return its raw bytes.
+
+        The payload's b64_json is decoded here; the bytes may be
+        WebP despite any .png naming, so callers convert through
+        PIL before saving. Any failure raises RuntimeError with a
+        clear message.
+        """
+        if not self.api_key:
+            raise RuntimeError("MODEL_API_KEY is not set; cannot call the Meta Model API.")
+        import base64
+
+        import httpx  # imported lazily so mock mode never needs the package
+
+        try:
+            response = httpx.post(
+                f"{self.base_url}/images/generations",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={"model": MODEL_IMAGE, "prompt": prompt},
+                timeout=120.0,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            raw = base64.b64decode(payload["data"][0]["b64_json"])
+        except Exception as exc:
+            raise RuntimeError(f"Muse Image generation failed: {exc}") from exc
+        self.usage.record(MODEL_IMAGE, payload.get("usage"))
+        return raw
 
 
 class MockClient:
@@ -226,6 +296,25 @@ class MockClient:
 
     def generate_draft(self, plan_item: dict, brand_voice: dict) -> dict:
         topic = plan_item.get("topic", "our latest service")
+        if "short video" in (plan_item.get("format") or "").lower():
+            # Beat-structured like the real client's directed
+            # script: pain, reveal, demo, proof, then the CTA line,
+            # one line per beat, so mock runs exercise all six
+            # storyboard beats (the hook comes from the topic).
+            brand = brand_voice.get("brand_name", "the brand")
+            lines = [
+                "Customers message your page after hours and wait until morning for a reply.",
+                f"Meet {brand}, the assistant that answers your page messages for you.",
+                "Watch it answer a price question, take the customer's details and line up the follow-up.",
+                "Built for SME owners who sell through their page and cannot sit in the inbox all day.",
+                "Message us to get started, and we will map the first step with you.",
+            ]
+            text = "\n".join(lines) + " #FYFAI #AIAutomation #SME"
+            return {
+                "platform": plan_item.get("platform", "facebook"),
+                "text": text,
+                "hashtags": ["#FYFAI", "#AIAutomation", "#SME"],
+            }
         text = (
             f"{topic}. We built this for SME owners who sell through their page and "
             "cannot sit in the inbox all day. Message us to get started, and we will "
@@ -264,6 +353,22 @@ def get_client(settings=None):
     if settings.model_mode == "meta" and settings.model_api_key:
         return MetaModelClient(api_key=settings.model_api_key, usage_log=settings.usage_log)
     return MockClient()
+
+
+def get_image_client(settings=None):
+    """Factory for the Muse Image plate route: a client only in
+    meta mode with a key, else None.
+
+    Callers treat None as "no plates": the video falls back to
+    template frames, so the pipeline never depends on the image
+    route existing (and mock mode stays hermetic).
+    """
+    from .config import get_settings
+
+    settings = settings or get_settings()
+    if settings.model_mode == "meta" and settings.model_api_key:
+        return MetaImageClient(api_key=settings.model_api_key, usage_log=settings.usage_log)
+    return None
 
 
 def get_baseten_client(api_key: str | None = None, usage_log: Path | str | None = None):

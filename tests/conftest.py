@@ -25,7 +25,7 @@ def _stub_video_production(request, monkeypatch):
     import pageops.pipeline as pipeline_module
     import pageops.video as video_module
 
-    def fake_produce_video(store, row):
+    def fake_produce_video(store, row, image_client=None):
         out_dir = store.data_dir / "visuals"
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / f"video-{row.get('id', 'row')}.mp4"
@@ -52,6 +52,7 @@ def _stub_video_production(request, monkeypatch):
                 "reference": "",
                 "reason": "",
             },
+            "plate": {"used": False, "scene": "", "reason": "stubbed in tests"},
         }
         return out_path, manifest
 

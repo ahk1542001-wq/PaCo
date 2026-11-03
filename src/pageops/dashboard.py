@@ -363,7 +363,12 @@ def make_handler(store: Store):
                     item_id = form.get("id", "")
                     action = form.get("action", "")
                     if action == "run":
-                        from .model_client import MockClient, get_client, get_judge_client
+                        from .model_client import (
+                            MockClient,
+                            get_client,
+                            get_image_client,
+                            get_judge_client,
+                        )
                         from .pipeline import run_brief
                         from .research import fetch_research
 
@@ -378,9 +383,14 @@ def make_handler(store: Store):
                             item_id,
                             trends_fetcher=fetcher,
                             judge=get_judge_client(),
+                            image_client=get_image_client(),
                         )
                     elif action == "edit":
-                        from .model_client import get_client, get_judge_client
+                        from .model_client import (
+                            get_client,
+                            get_image_client,
+                            get_judge_client,
+                        )
                         from .pipeline import edit_item
 
                         edit_item(
@@ -389,6 +399,7 @@ def make_handler(store: Store):
                             item_id,
                             form.get("draft", ""),
                             judge=get_judge_client(),
+                            image_client=get_image_client(),
                         )
                     elif action == "approve":
                         from .pipeline import approve_item
