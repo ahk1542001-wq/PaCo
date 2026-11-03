@@ -393,21 +393,33 @@ def _scene_treatment(
     rendered here, in code, never by the image model.
     """
     width, height = img.size
-    scrim_depth = int(height * 0.55)
+    max_width = text_width if text_width is not None else width - 120
+    measure = ImageDraw.Draw(img)
+    headline_font, headline_lines = _fit(measure, row.get("topic", ""), 72, max_width, 3)
+    angle_font, angle_lines = _fit(measure, row.get("angle", ""), 44, max_width, 4)
+    # The scrim must cover every line it carries: measure the text
+    # block first, then size the scrim to it, so a long angle never
+    # runs off the scrim onto the bare photograph (seen in the first
+    # real Concept run, where the subline crossed the photo unreadably).
+    text_bottom = 240 + 92 * len(headline_lines) + 30
+    probe_y = text_bottom
+    for _ in angle_lines:
+        if probe_y > height - 190:
+            break
+        probe_y += 60
+    text_bottom = max(text_bottom, probe_y)
+    scrim_depth = min(height, max(int(height * 0.55), text_bottom + 60))
     mask = Image.new("L", (1, height), 0)
     for y in range(height):
-        alpha = int(255 * max(0.0, 1 - y / scrim_depth)) if y < scrim_depth else 0
+        alpha = int(255 * max(0.0, 1 - y / scrim_depth) ** 0.6) if y < scrim_depth else 0
         mask.putpixel((0, y), alpha)
     img.paste(Image.new("RGB", (width, height), ASSETS["primary_rgb"]), (0, 0), mask.resize((width, height)))
     draw = ImageDraw.Draw(img)
     draw.text((60, 45), ASSETS["brand_name"], font=_font(64), fill=(255, 255, 255))
-    max_width = text_width if text_width is not None else width - 120
-    headline_font, headline_lines = _fit(draw, row.get("topic", ""), 72, max_width, 3)
     y = 240
     for line in headline_lines:
         draw.text((60, y), line, font=headline_font, fill=(255, 255, 255))
         y += 92
-    angle_font, angle_lines = _fit(draw, row.get("angle", ""), 44, max_width, 4)
     y += 30
     for line in angle_lines:
         if y > height - 190:
