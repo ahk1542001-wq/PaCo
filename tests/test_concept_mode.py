@@ -463,3 +463,25 @@ def test_scene_scrim_covers_the_whole_text_block(tmp_path):
     w, h = img.size
     assert img.getpixel((w - 30, int(h * 0.48)))[1] < 215
     assert img.getpixel((w - 30, int(h * 0.59)))[1] < 250
+
+
+def test_meta_concept_instruction_demands_legibility(tmp_path, monkeypatch):
+    """The direction instruction itself must carry the one-glance
+    legibility clause (owner's rule, 2026-11-03): metaphor elements
+    drawn as the literal thing they represent, never abstract orbs."""
+    client = MetaModelClient(api_key="<redacted>", usage_log=tmp_path / "u.jsonl")
+    seen = {}
+
+    def capturing_chat(messages, model=None, **kwargs):
+        seen["messages"] = messages
+        reply = json.dumps(
+            {"concept": "C", "prompt": CONCEPT_PROMPT,
+             "no_exceptions": "No exceptions: every bubble lands on the umbrella."}
+        )
+        return {"choices": [{"message": {"content": reply}}]}
+
+    monkeypatch.setattr(client, "chat", capturing_chat)
+    client.direct_visual({"topic": "T"}, "draft", {}, "concept")
+    sent = " ".join(m["content"] for m in seen["messages"])
+    assert "instantly recognisable" in sent
+    assert "never as abstract orbs" in sent
