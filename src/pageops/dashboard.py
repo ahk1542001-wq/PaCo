@@ -1,4 +1,4 @@
-"""Web kanban dashboard for PageOps Agent.
+"""Web kanban dashboard for PaCo Agent.
 
 A single server-rendered page (Python stdlib only) that reads the same
 CSV store the pipeline writes to, so the board always shows the real
@@ -270,13 +270,13 @@ def render_board(store: Store) -> str:
         '<button type="submit">Add brief</button></form></section>'
     )
 
-    brand_name = html.escape(brand["brand_name"] or "PageOps Agent")
+    brand_name = html.escape(brand["brand_name"] or "PaCo Agent")
     return (
         "<!DOCTYPE html><html><head><meta charset='utf-8'>"
         '<meta http-equiv="refresh" content="15">'
-        f"<title>{brand_name} - PageOps board</title><style>{_CSS}</style></head><body>"
+        f"<title>{brand_name} - PaCo board</title><style>{_CSS}</style></head><body>"
         f"<header><h1>{brand_name} - content pipeline</h1>"
-        "<p>PageOps Agent, a digital marketing and content creation agent: brief, plan, checks, approvals, scheduling, report.</p></header>"
+        "<p>PaCo Agent, a digital marketing and content creation agent: brief, plan, checks, approvals, scheduling, report.</p></header>"
         f"{brief_form}"
         f"<div class='board'>{''.join(columns_html)}</div>"
         f"{brand_panel}{metrics_panel}{report_panel}"
@@ -423,7 +423,7 @@ def serve(store: Store | None = None, port: int = 8765) -> ThreadingHTTPServer:
 
         store = Store(get_settings().data_dir)
     server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(store))
-    print(f"PageOps dashboard: http://127.0.0.1:{port}")
+    print(f"PaCo dashboard: http://127.0.0.1:{port}")
     return server
 
 
