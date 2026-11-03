@@ -116,7 +116,8 @@ class MetaModelClient:
         if trends:
             payload["trends"] = trends
         return self._structured(
-            "Create a 7-day content plan as JSON: {posts: [{day, platform, topic, angle, format}]}.",
+            "Create a 7-day content plan as JSON: {posts: [{day, platform, topic, angle, format, character}]}. "
+            "Set character to \"yes\" only for announcement or engagement posts where a mascot presenter fits; otherwise leave it empty.",
             payload,
             self.main_model,
         )
@@ -175,6 +176,7 @@ class MockClient:
                     "topic": f"How {brand} answers page messages while the owner is busy",
                     "angle": "Relatable problem, then the fix",
                     "format": "Short video",
+                    "character": "yes",
                 },
                 {
                     "day": "Wed",
@@ -196,6 +198,7 @@ class MockClient:
                     "topic": "Five questions your page should answer without you",
                     "angle": "Checklist the owner can test tonight",
                     "format": "Carousel",
+                    "character": "yes",
                 },
                 {
                     "day": "Fri",
