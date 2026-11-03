@@ -32,6 +32,13 @@
   manifest's concept record carries that no-exceptions line.
   If the image would contradict the one-line claim, it is the
   wrong image: regenerate or fall back.
+- **One-glance legibility: a stranger must get the metaphor in
+  one second.** Every element of the metaphor is drawn as the
+  literal, instantly recognisable thing it represents:
+  customer messages as envelopes or chat bubbles with tails,
+  never as abstract orbs, blobs or generic glowing shapes. An
+  element that could be mistaken for something else fails,
+  even when the metaphor is airtight.
 - For carousels the generated plate applies to slide 1 only;
   the remaining slides keep the template rendering.
 - Any failure in direction or generation falls back to the
