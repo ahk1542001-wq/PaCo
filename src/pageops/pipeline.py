@@ -174,7 +174,9 @@ def _full_text(draft: dict) -> str:
     return text
 
 
-def draft_and_check(store: Store, client, row: dict, judge=None) -> dict:
+def draft_and_check(
+    store: Store, client, row: dict, judge=None, image_client=None
+) -> dict:
     """Draft one plan item, run the checker, revise once on failure.
 
     Ends with status awaiting_approval (checks passed) or checked
@@ -196,7 +198,10 @@ def draft_and_check(store: Store, client, row: dict, judge=None) -> dict:
     # the board's Drafted column and the write log show the real
     # progression instead of a jump from planned to checked.
     store.update_row("plan", row["id"], {"draft": text, "status": "drafted"})
-    summary, status = _review_tail(store, client, item, text, summary, result.passed, judge=judge)
+    summary, status = _review_tail(
+        store, client, item, text, summary, result.passed,
+        judge=judge, image_client=image_client,
+    )
     return store.update_row(
         "plan",
         row["id"],
@@ -212,6 +217,7 @@ def _review_tail(
     summary: str,
     rules_passed: bool,
     judge=None,
+    image_client=None,
 ) -> tuple[str, str]:
     """Visuals + model verdict for a settled draft text.
 
@@ -240,7 +246,7 @@ def _review_tail(
 
             try:
                 video_path, video_manifest = produce_video(
-                    store, {**item, "draft": text}
+                    store, {**item, "draft": text}, image_client=image_client
                 )
                 video_note = (
                     f"\n[VIDEO] PASS - {video_path.name} "
@@ -324,7 +330,9 @@ def reject_item(store: Store, row_id: str, reason: str = "") -> dict:
     )
 
 
-def edit_item(store: Store, client, row_id: str, new_text: str, judge=None) -> dict:
+def edit_item(
+    store: Store, client, row_id: str, new_text: str, judge=None, image_client=None
+) -> dict:
     """Apply a human edit, then re-check AND re-verdict the new text.
 
     Editing is a pre-approval act: approved or scheduled content is
@@ -340,7 +348,8 @@ def edit_item(store: Store, client, row_id: str, new_text: str, judge=None) -> d
     result = check_draft(new_text, row.get("platform", ""), brand)
     store.update_row("plan", row["id"], {"draft": new_text, "status": "drafted"})
     summary, status = _review_tail(
-        store, client, row, new_text, result.summary(), result.passed, judge=judge
+        store, client, row, new_text, result.summary(), result.passed,
+        judge=judge, image_client=image_client,
     )
     return store.update_row(
         "plan", row["id"], {"check_status": summary, "status": status}
@@ -406,7 +415,12 @@ def current_report(store: Store) -> dict:
 
 
 def run_brief(
-    store: Store, client, brief_row_id: str, trends_fetcher=None, judge=None
+    store: Store,
+    client,
+    brief_row_id: str,
+    trends_fetcher=None,
+    judge=None,
+    image_client=None,
 ) -> list[dict]:
     """Run the pipeline for one brief card already on the board.
 
@@ -417,16 +431,27 @@ def run_brief(
     brief_row = _get_row(store, brief_row_id)
     trends = _trends_for(store, trends_fetcher, brief=brief_row.get("brief", ""))
     rows = generate_week(store, client, brief_row.get("brief", ""), trends=trends)
-    drafted = [draft_and_check(store, client, row, judge=judge) for row in rows]
+    drafted = [
+        draft_and_check(store, client, row, judge=judge, image_client=image_client)
+        for row in rows
+    ]
     store.update_row("plan", brief_row["id"], {"status": "planned"})
     return drafted
 
 
 def process_week(
-    store: Store, client, brief_text: str, trends_fetcher=None, judge=None
+    store: Store,
+    client,
+    brief_text: str,
+    trends_fetcher=None,
+    judge=None,
+    image_client=None,
 ) -> list[dict]:
     """Full mock-safe run: brief, research, plan, draft + check each post."""
     intake_brief(store, brief_text)
     trends = _trends_for(store, trends_fetcher, brief=brief_text)
     rows = generate_week(store, client, brief_text, trends=trends)
-    return [draft_and_check(store, client, row, judge=judge) for row in rows]
+    return [
+        draft_and_check(store, client, row, judge=judge, image_client=image_client)
+        for row in rows
+    ]
