@@ -3,7 +3,15 @@ import csv
 
 from pageops.store import DATASETS, Store
 
-OLD_PLAN_FIELDS = [f for f in DATASETS["plan"] if f != "visual"]
+# The literal plan field list as it stood before the character
+# field (Wave 0) and the video field (Wave 2) existed. Written out
+# in full on purpose: deriving it from the current DATASETS would
+# silently shrink the fixture every time a field is added.
+OLD_PLAN_FIELDS = [
+    "id", "date", "platform", "topic", "angle", "format", "status",
+    "brief", "brief_check", "draft", "check_status", "visual",
+    "reject_reason", "post_id", "buffer_id",
+]
 
 
 def test_old_plan_csv_gains_visual_column_and_keeps_rows(tmp_path):
@@ -20,6 +28,8 @@ def test_old_plan_csv_gains_visual_column_and_keeps_rows(tmp_path):
     legacy = [r for r in rows if r["id"] == "7"][0]
     assert legacy["topic"] == "Legacy row"
     assert legacy["visual"] == ""
+    assert legacy["character"] == ""  # gained in Wave 0
+    assert legacy["video"] == ""  # gained in Wave 2
     with path.open(newline="", encoding="utf-8") as fh:
         header = next(csv.reader(fh))
     assert header == DATASETS["plan"]
