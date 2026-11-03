@@ -24,3 +24,7 @@ One page. Produced by the M1 alignment pass (Pocock `grill-with-docs`) over the 
 - **Graphic Designer role:** the owner's design session sketched one in Department 1; the pipeline has no visual-production stage today. Adding it means a new stage + minitask. Owner's call.
 
 <!-- gate proof: throwaway PR for M1, 2026-11-02 -->
+
+## Video format vocabulary (2026-11-03)
+
+The Concept acceptance run exposed a vocabulary trap: Muse Wonder labelled two plan rows "video" instead of "Short video", and every video trigger matched the exact phrase "short video", so those rows silently received poster visuals only. The planner's format names are not constrained, so the triggers now match any format containing "video" (pipeline review tail, the Meta draft instruction, and the mock client). A regression test pins a plain "video" row producing a video.
