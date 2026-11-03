@@ -1,4 +1,4 @@
-"""Performance report for PageOps Agent.
+"""Performance report for PaCo Agent.
 
 The narrative is assembled from the computed metrics only, in the
 goal -> strategy -> execution -> result shape that doubles as the
@@ -57,7 +57,7 @@ def build_report(store: Store, goal: str = "", client=None) -> dict:
         ),
         (
             f"Execution: {totals['posts']} published posts tracked this period "
-            f"across the plan stored in PageOps."
+            f"across the plan stored in PaCo."
         ),
         (
             f"Result: total reach {totals['reach']}, total engagement "
