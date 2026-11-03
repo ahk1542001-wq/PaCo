@@ -264,9 +264,10 @@ def _review_tail(
         # Deterministic rules passed; the judge model gives the
         # judgement verdict. A "revise" verdict flags the card for
         # the human instead of letting it through to approval.
-        # The judge must never be the drafting client itself: a
-        # same-object judge is treated as no judge, so a model can
-        # never end up judging its own output through this path.
+        # The verdict runs as the Judge role's own pass, through a
+        # dedicated judge client: a same-object judge is treated as
+        # no judge, so the drafting client object never doubles as
+        # the judge through this path.
         verdict_client = judge if (judge is not None and judge is not client) else client
         try:
             verdict = verdict_client.verdict(

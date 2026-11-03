@@ -14,6 +14,7 @@ One page. Produced by the M1 alignment pass (Pocock `grill-with-docs`) over the 
 - **Scheduler gate:** `scheduler.py` refuses, in code, anything not in `approved` status. Buffer runs dry-run until a live key exists; dry-run queue IDs are labelled as such everywhere.
 - **Cost policy:** usage is logged per run; flag at ~50% and ~80% of the $150 Meta credit. No paid step beyond the credit without the owner's say.
 - **Gate enforcement:** every change lands as a branch + pull request; GitHub Actions runs the full test suite on each PR; branch protection on `main` requires green checks. The lane then runs its own two-axis review (standards, then spec, the Matt Pocock way, fresh-context reviewers) on the change, fixes every finding on the spot, retests, and merges. **A step is FINAL only after green checks + a passed two-axis review + merge.** CodeRabbit is configured as an additional automated reviewer once its app is installed.
+- **Judge change (2026-11-03):** the owner moved every big-decision role to Muse Wonder, Brand Checker verdicts included. Verdicts now run on Muse Wonder in a dedicated judge pass (its own client instance and verdict prompt) on the Meta Model API. This supersedes the 2026-11-02 designation in the Models entry above, which named Muse Spark Open via Baseten as the judge. The deterministic checker in code remains the independent, model-free layer under the verdict. Muse Spark Open via Baseten stays in the code as an optional alternate route; it is not the configured judge.
 
 ## Open (not silently resolved)
 

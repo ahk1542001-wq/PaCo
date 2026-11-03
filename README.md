@@ -10,10 +10,13 @@ AI-automation services page for Myanmar and Thai SME owners.
 
 Built during the **Meta Global AI Developer Hackathon (November
 2026)** on the Meta Model API: **Muse Wonder** is the main LLM (plan,
-drafts, report narrative), with Muse Spark available for light
-utility calls. Brand verdicts are judged by **Muse Spark Open**
-through Baseten (`BASETEN_API_KEY`) when configured, an open-weights
-route on Meta's own model, falling back to Wonder when it is not.
+drafts, report narrative) and also gives the brand verdicts, in a
+dedicated judge pass with its own client instance and verdict
+prompt. Underneath the verdict sits a deterministic rule checker in
+code, the independent, model-free layer. Muse Spark is available
+for light utility calls. **Muse Spark Open** through Baseten
+(`BASETEN_API_KEY`) remains in the code as an optional alternate
+route, but it is not the configured judge.
 
 ## Built during the event window
 

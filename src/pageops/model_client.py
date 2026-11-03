@@ -26,11 +26,15 @@ MODEL_WONDER = "muse-wonder-1.0"
 MODEL_SPARK_OPEN = "meta-models/muse-spark-open-1026"
 MODEL_IMAGE = "muse-image-1.0"
 
-# Muse Wonder is the product's main LLM (owner's decision, 2026-11-01):
-# plan, drafts and the report narrative run on Wonder; verdicts
-# run on the judge (Spark Open via Baseten) when configured, and
-# fall back to Wonder only when no judge is configured
-# stays available for light utility calls where its lower cost matters.
+# Muse Wonder is the product's decision model (owner's decisions,
+# 2026-11-01 and 2026-11-03): plan, drafts and the report narrative
+# run on Wonder, and brand verdicts run on Wonder too, in a
+# dedicated judge pass (get_judge_client below). The deterministic
+# checker in checker.py is the independent, model-free layer under
+# the verdict. Muse Spark Open via Baseten stays in the code as an
+# optional alternate route; it is not the configured judge. Muse
+# Spark stays available for light utility calls where its lower
+# cost matters.
 
 
 class UsageLogger:
@@ -388,12 +392,27 @@ def get_baseten_client(api_key: str | None = None, usage_log: Path | str | None 
     return client
 
 
-def get_judge_client():
-    """The decision/judge model: Muse Spark Open via Baseten.
+def get_judge_client(settings=None):
+    """The Brand Checker judge: Muse Wonder in a dedicated pass.
 
-    A second model judging the main model's drafts (the owner's
-    Model map designation). Returns None when no Baseten key is
-    configured; callers then fall back to the drafting client's
-    verdict, so the pipeline never depends on the judge existing.
+    Owner's decision (2026-11-03): Muse Wonder holds every
+    big-decision role, including brand verdicts. The judge is its
+    own MetaModelClient instance on the Meta Model API, never the
+    drafting client object, so verdicts run as the Judge role's own
+    pass through verdict() with verdict_model set to MODEL_WONDER,
+    and the pipeline's same-object guard passes. The deterministic
+    checker in code remains the independent, model-free layer under
+    the verdict. Muse Spark Open via Baseten (get_baseten_client)
+    stays in the code as an optional alternate route; it is not the
+    configured judge.
+
+    Returns None in mock mode or without a Meta key; callers then
+    use the drafting client's verdict, so the pipeline never depends
+    on the judge existing.
     """
-    return get_baseten_client()
+    from .config import get_settings
+
+    settings = settings or get_settings()
+    if settings.model_mode == "meta" and settings.model_api_key:
+        return MetaModelClient(api_key=settings.model_api_key, usage_log=settings.usage_log)
+    return None
