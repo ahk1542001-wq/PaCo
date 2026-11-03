@@ -1,9 +1,19 @@
 """Graphic Designer role (Department 1, Visuals stage).
 
-Produces each post's visual from brand templates only: fixed layouts,
-brand colours, the brand wordmark, the post's headline. Never
-freestyled. The Designer checks its own work (template compliance:
-file, dimensions, brand colour present) before the row moves on.
+Produces each post's visual two ways. The baseline is the brand
+templates: fixed layouts, brand colours, the brand wordmark, the
+post's headline, never freestyled. When a director (the planner
+model) and an image client are both configured, a still visual is
+produced in the plan's visual style instead: the director writes a
+concept line and an image prompt, one generated plate (Muse Image)
+becomes the full-bleed background, and the Designer composites the
+typography in code over it. "scene" style carries the full headline
+treatment; "concept" style carries one metaphor, one headline line,
+minimal type. Any failure in direction or generation falls back to
+the template render and is recorded in the manifest; a plate failure
+never fails the row. The Designer checks its own work (template
+compliance: file, dimensions, brand colour present) before the row
+moves on.
 
 Brand assets are interim seed values from the brand-assets layer;
 when the owner's official FYF AI brand files land, they replace
@@ -12,7 +22,9 @@ these in one swap (same keys, same consumers).
 
 from __future__ import annotations
 
+import os
 import re
+from io import BytesIO
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
@@ -279,18 +291,228 @@ def _apply_character(
     }
 
 
-def render_visual(
-    row: dict, out_dir: Path | str, brand_voice: dict | None = None
-) -> tuple[Path, dict]:
-    """Render the row's visual from its template. Deterministic.
+def visual_style_for(row: dict) -> str:
+    """The row's visual style: "scene" or "concept".
 
-    Carousel rows return slide 1's path; the manifest lists every
-    slide. Banner rows render the wide banner template. All other
-    formats render the single-image templates as before.
+    Rows planned before the field existed (and rows whose planner
+    left it blank) default to "scene", and any unrecognised value
+    resolves to "scene" as well: the default is always the safe,
+    full-treatment style.
+    """
+    style = str(row.get("visual_style") or "scene").strip().lower()
+    return style if style in ("scene", "concept") else "scene"
+
+
+def save_plate(raw: bytes, out_dir: Path | str, row: dict) -> Path:
+    """Store generated plate bytes as a PNG in the visuals dir.
+
+    The image API's payload may be WebP bytes despite any .png
+    naming, so the bytes always go through PIL and come out as a
+    real PNG, written atomically (temp file, then replace).
+    """
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / f"plate-{row.get('id', 'row')}.png"
+    tmp = out / f"plate-{row.get('id', 'row')}.tmp.png"
+    with Image.open(BytesIO(raw)) as img:
+        img.convert("RGB").save(tmp)
+    os.replace(tmp, path)
+    return path
+
+
+def direct_plate(
+    row: dict,
+    brand_voice: dict | None,
+    out_dir: Path | str,
+    director,
+    image_client,
+) -> tuple[dict, dict, Path | None]:
+    """Direction + one generated plate for a still visual.
+
+    Returns (concept_record, plate_record, plate_path). Never
+    raises: the director writes the concept line and the prompt,
+    the image client generates one plate from it, and any failure
+    in either step is recorded and returns plate_path None, so the
+    caller renders the brand template instead. A plate failure
+    never fails the row.
+    """
+    style = visual_style_for(row)
+    concept: dict = {"style": style, "concept": "", "prompt": "", "no_exceptions": ""}
+    try:
+        directed = director.direct_visual(
+            row, row.get("draft", ""), brand_voice or {}, style
+        )
+        if not isinstance(directed, dict):
+            raise ValueError("director returned no direction")
+        concept = {
+            "style": style,
+            "concept": str(directed.get("concept", "")),
+            "prompt": str(directed.get("prompt", "")),
+            "no_exceptions": str(directed.get("no_exceptions", "")),
+        }
+    except Exception as exc:
+        return concept, {"used": False, "reason": f"direction failed: {exc}"}, None
+    try:
+        raw = image_client.generate_image_bytes(concept["prompt"])
+        plate_path = save_plate(raw, out_dir, row)
+    except Exception as exc:
+        return concept, {"used": False, "reason": f"plate generation failed: {exc}"}, None
+    return concept, {"used": True, "reason": ""}, plate_path
+
+
+def _plate_base(plate_path: Path | str, size: tuple[int, int]) -> Image.Image:
+    """A generated plate as a full-bleed background, cover-cropped."""
+    with Image.open(plate_path) as img:
+        plate = img.convert("RGB")
+    scale = max(size[0] / plate.width, size[1] / plate.height)
+    resized = plate.resize(
+        (
+            max(size[0], round(plate.width * scale)),
+            max(size[1], round(plate.height * scale)),
+        ),
+        Image.LANCZOS,
+    )
+    x = (resized.width - size[0]) // 2
+    y = (resized.height - size[1]) // 2
+    return resized.crop((x, y, x + size[0], y + size[1]))
+
+
+def _scene_treatment(
+    img: Image.Image,
+    row: dict,
+    brand_voice: dict | None = None,
+    footer_text: str | None = None,
+    text_width: int | None = None,
+) -> None:
+    """Scene style over a plate: the full headline treatment.
+
+    A primary-colour scrim fades down from the top (fully opaque at
+    the first row, so the brand colour anchors the frame), carrying
+    the wordmark, the headline (the topic) and the angle subline in
+    white; the accent footer band closes the frame. All type is
+    rendered here, in code, never by the image model.
+    """
+    width, height = img.size
+    scrim_depth = int(height * 0.55)
+    mask = Image.new("L", (1, height), 0)
+    for y in range(height):
+        alpha = int(255 * max(0.0, 1 - y / scrim_depth)) if y < scrim_depth else 0
+        mask.putpixel((0, y), alpha)
+    img.paste(Image.new("RGB", (width, height), ASSETS["primary_rgb"]), (0, 0), mask.resize((width, height)))
+    draw = ImageDraw.Draw(img)
+    draw.text((60, 45), ASSETS["brand_name"], font=_font(64), fill=(255, 255, 255))
+    max_width = text_width if text_width is not None else width - 120
+    headline_font, headline_lines = _fit(draw, row.get("topic", ""), 72, max_width, 3)
+    y = 240
+    for line in headline_lines:
+        draw.text((60, y), line, font=headline_font, fill=(255, 255, 255))
+        y += 92
+    angle_font, angle_lines = _fit(draw, row.get("angle", ""), 44, max_width, 4)
+    y += 30
+    for line in angle_lines:
+        if y > height - 190:
+            break
+        draw.text((60, y), line, font=angle_font, fill=(235, 240, 250))
+        y += 60
+    draw.rectangle([0, height - 110, width, height], fill=ASSETS["accent_rgb"])
+    footer = footer_text or f"{row.get('platform', '')} · {row.get('format', '')}".strip(" ·")
+    draw.text((60, height - 82), footer, font=_font(40), fill=ASSETS["ink_rgb"])
+
+
+def _concept_treatment(
+    img: Image.Image,
+    row: dict,
+    brand_voice: dict | None = None,
+) -> None:
+    """Concept style over a plate: minimal typography.
+
+    Only two elements: a small brand wordmark on a primary-colour
+    chip in the top-left corner, and a one-line headline (the
+    draft's first line, fitted to a single line). The generated
+    metaphor carries the frame; nothing else is added.
+    """
+    draw = ImageDraw.Draw(img)
+    wordmark_font = _font(48)
+    wordmark_width = draw.textlength(ASSETS["brand_name"], font=wordmark_font)
+    draw.rectangle(
+        [44, 38, 44 + wordmark_width + 48, 114], fill=ASSETS["primary_rgb"]
+    )
+    draw.text(
+        (68, 52), ASSETS["brand_name"], font=wordmark_font, fill=(255, 255, 255)
+    )
+    points = split_points(row.get("draft", ""))
+    headline = points[0] if points else row.get("topic", "")
+    headline_font, headline_lines = _fit(draw, headline, 76, img.width - 120, 1)
+    line = headline_lines[0] if headline_lines else ""
+    draw.text((63, 153), line, font=headline_font, fill=(10, 18, 38))
+    draw.text((60, 150), line, font=headline_font, fill=(255, 255, 255))
+
+
+def _render_plate_single(
+    row: dict,
+    out_dir: Path | str,
+    brand_voice: dict | None,
+    plate_path: Path,
+    style: str,
+    template: str,
+) -> tuple[Path, dict]:
+    """One still visual rendered over a generated plate."""
+    width, height = TEMPLATES[template]
+    img = _plate_base(plate_path, (width, height))
+    if style == "concept":
+        _concept_treatment(img, row, brand_voice)
+        diameter, badge_x, badge_y = _badge_placement(width, height)
+    else:
+        if template == "banner":
+            badge_diameter = round(height * 0.40)
+            text_width = width - badge_diameter - 70 - 120
+            _scene_treatment(img, row, brand_voice, text_width=text_width)
+            diameter, badge_x, badge_y = badge_diameter, width - badge_diameter - 70, 200
+        else:
+            _scene_treatment(img, row, brand_voice)
+            diameter, badge_x, badge_y = _badge_placement(width, height)
+    character = _apply_character(
+        img, row, brand_voice, diameter=diameter, x=badge_x, y=badge_y
+    )
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / f"visual-{row.get('id', 'row')}-{template}.png"
+    img.save(path)
+    manifest = {
+        "template": template,
+        "format": template,
+        "size": (width, height),
+        "wordmark": ASSETS["brand_name"],
+        "headline": row.get("topic", ""),
+        "path": str(path),
+        "character": character,
+        "style": style,
+        "plate": {"used": True, "reason": ""},
+    }
+    return path, manifest
+
+
+def render_visual(
+    row: dict,
+    out_dir: Path | str,
+    brand_voice: dict | None = None,
+    plate_path: Path | str | None = None,
+    style: str = "scene",
+) -> tuple[Path, dict]:
+    """Render the row's visual. Deterministic per input.
+
+    Without a plate this is the brand template render. With a
+    generated plate (plate_path) the visual renders full-bleed over
+    the plate in the given style; for carousels the plate applies
+    to slide 1 only and the remaining slides keep the template
+    rendering. Carousel rows return slide 1's path; the manifest
+    lists every slide.
     """
     template = template_for(row)
     if template == "carousel":
-        return _render_carousel(row, out_dir, brand_voice)
+        return _render_carousel(row, out_dir, brand_voice, plate_path=plate_path, style=style)
+    if plate_path is not None:
+        return _render_plate_single(row, out_dir, brand_voice, Path(plate_path), style, template)
     if template == "banner":
         return _render_banner(row, out_dir, brand_voice)
     width, height = TEMPLATES[template]
@@ -449,13 +671,20 @@ def carousel_slides(row: dict, brand_voice: dict | None = None) -> list[dict]:
 
 
 def _render_carousel(
-    row: dict, out_dir: Path | str, brand_voice: dict | None = None
+    row: dict,
+    out_dir: Path | str,
+    brand_voice: dict | None = None,
+    plate_path: Path | None = None,
+    style: str = "scene",
 ) -> tuple[Path, dict]:
     """Render a carousel slide set (1080x1080 per slide).
 
     Returns slide 1's path; the manifest lists every slide path
     and the character record for the set (the badge is composited
-    on the first and final slides when the row calls for it).
+    on the first and final slides when the row calls for it). When
+    a generated plate is supplied it applies to slide 1 only, in
+    the row's style; the remaining slides keep the template
+    rendering.
     """
     width, height = TEMPLATES["carousel"]
     plan = carousel_slides(row, brand_voice)
@@ -466,33 +695,40 @@ def _render_carousel(
     paths: list[Path] = []
     character: dict = {"used": False, "requested": False, "reference": "", "reason": ""}
     for index, slide in enumerate(plan, start=1):
-        img = Image.new("RGB", (width, height), ASSETS["background_rgb"])
-        draw = ImageDraw.Draw(img)
-        draw.rectangle([0, 0, width, 150], fill=ASSETS["primary_rgb"])
-        draw.text(
-            (60, 45),
-            ASSETS["brand_name"],
-            font=_font(64),
-            fill=(255, 255, 255),
-        )
-        body_font, body_lines = _fit(draw, slide["text"], 64, width - 120, 8)
-        y = 230
-        for line in body_lines:
-            draw.text((60, y), line, font=body_font, fill=ASSETS["ink_rgb"])
-            y += 84
-        if slide["kind"] == "hook" and row.get("angle"):
-            angle_font, angle_lines = _fit(draw, row["angle"], 44, width - 120, 4)
-            y += 24
-            for line in angle_lines:
-                if y > height - 420:
-                    break
-                draw.text((60, y), line, font=angle_font, fill=ASSETS["primary_rgb"])
-                y += 60
-        draw.rectangle([0, height - 110, width, height], fill=ASSETS["accent_rgb"])
         footer = (
             f"{row.get('platform', '')} · {row.get('format', '')} · {index} / {total}"
         ).strip(" ·")
-        draw.text((60, height - 82), footer, font=_font(40), fill=ASSETS["ink_rgb"])
+        if index == 1 and plate_path is not None:
+            img = _plate_base(plate_path, (width, height))
+            if style == "concept":
+                _concept_treatment(img, row, brand_voice)
+            else:
+                _scene_treatment(img, row, brand_voice, footer_text=footer)
+        else:
+            img = Image.new("RGB", (width, height), ASSETS["background_rgb"])
+            draw = ImageDraw.Draw(img)
+            draw.rectangle([0, 0, width, 150], fill=ASSETS["primary_rgb"])
+            draw.text(
+                (60, 45),
+                ASSETS["brand_name"],
+                font=_font(64),
+                fill=(255, 255, 255),
+            )
+            body_font, body_lines = _fit(draw, slide["text"], 64, width - 120, 8)
+            y = 230
+            for line in body_lines:
+                draw.text((60, y), line, font=body_font, fill=ASSETS["ink_rgb"])
+                y += 84
+            if slide["kind"] == "hook" and row.get("angle"):
+                angle_font, angle_lines = _fit(draw, row["angle"], 44, width - 120, 4)
+                y += 24
+                for line in angle_lines:
+                    if y > height - 420:
+                        break
+                    draw.text((60, y), line, font=angle_font, fill=ASSETS["primary_rgb"])
+                    y += 60
+            draw.rectangle([0, height - 110, width, height], fill=ASSETS["accent_rgb"])
+            draw.text((60, height - 82), footer, font=_font(40), fill=ASSETS["ink_rgb"])
         if slide["badge"]:
             diameter, badge_x, badge_y = _badge_placement(width, height)
             result = _apply_character(
@@ -515,6 +751,9 @@ def _render_carousel(
         "points_total": len(all_points),
         "character": character,
     }
+    if plate_path is not None:
+        manifest["style"] = style
+        manifest["plate"] = {"used": True, "reason": ""}
     return paths[0], manifest
 
 
@@ -623,17 +862,51 @@ def verify_visual(path: Path | str, manifest: dict) -> tuple[bool, str]:
     )
 
 
-def produce_visual(store, row: dict) -> dict:
+def produce_visual(store, row: dict, image_client=None, director=None) -> dict:
     """Produce + self-check the visual for a drafted row; store its path.
 
     Refuses rows without a final draft: visuals are built from the
     Copywriter's finished text, never before it exists.
+
+    When a director and an image client are both supplied, the
+    visual is directed and generated in the row's visual style
+    (see direct_plate): the manifest records the concept (style,
+    concept line, prompt, and for concept style the no-exceptions
+    line) and the plate outcome. Any failure in direction,
+    generation or plate rendering falls back to the brand template
+    render, recorded in the manifest's plate dict; a plate failure
+    never fails the row. Without both clients (mock mode) the
+    template render runs exactly as before.
     """
     if not (row.get("draft") or "").strip():
         raise ValueError("no draft on the row: visuals follow the final draft")
     brand_voice = store.get_brand_voice()
     out_dir = store.data_dir / "visuals"
-    path, manifest = render_visual(row, out_dir, brand_voice=brand_voice)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    concept: dict | None = None
+    plate: dict = {"used": False, "reason": "no image client or director configured"}
+    plate_path: Path | None = None
+    if image_client is not None and director is not None:
+        concept, plate, plate_path = direct_plate(
+            row, brand_voice, out_dir, director, image_client
+        )
+    style = visual_style_for(row)
+    if plate_path is None:
+        # The plain template call, exactly the shape it has always
+        # had: the plate kwargs only enter the call when a plate
+        # actually exists.
+        path, manifest = render_visual(row, out_dir, brand_voice=brand_voice)
+    else:
+        try:
+            path, manifest = render_visual(
+                row, out_dir, brand_voice=brand_voice, plate_path=plate_path, style=style
+            )
+        except Exception as exc:
+            plate = {"used": False, "reason": f"plate rendering failed: {exc}"}
+            path, manifest = render_visual(row, out_dir, brand_voice=brand_voice)
+    if concept is not None:
+        manifest["concept"] = concept
+    manifest["plate"] = plate
     if manifest.get("slides"):
         # A carousel is accepted only when EVERY slide verifies,
         # exactly as a single image verifies against its template.
