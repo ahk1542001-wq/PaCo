@@ -1,6 +1,6 @@
-# PageOps Agent — Architecture
+# PaCo Agent — Architecture
 
-PageOps Agent is a digital marketing and content creation agent. It
+PaCo Agent is a digital marketing and content creation agent. It
 runs a business page's weekly content operation end to end:
 one brief in, a week of checked and approved posts out, with a human
 approval gate that the code itself enforces. The demo brand is FYF AI.
@@ -13,7 +13,7 @@ lives in `roles/`: ceo, strategist, copywriter, designer,
 brand-checker, scheduler, analyst. Those files are the canonical
 role definitions; this document describes how they are wired.
 
-PageOps runs like a small digital-marketing company, not one
+PaCo runs like a small digital-marketing company, not one
 monolithic agent. A **CEO orchestrator** (`pipeline.py`) controls the
 team: it assigns work down the pipeline, enforces the human-approval
 gate, and consolidates the final report. Each role is a real position
