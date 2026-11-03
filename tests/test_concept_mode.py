@@ -15,6 +15,7 @@ import pytest
 from PIL import Image
 
 from pageops.designer import (
+    _FONT_CANDIDATES,
     ASSETS,
     TEMPLATES,
     direct_plate,
@@ -423,3 +424,42 @@ def test_mock_week_stays_hermetic_and_stores_styles(tmp_path):
     assert "concept" in styles and "scene" in styles
     assert all(r.get("visual") for r in rows)
     assert not list((store.data_dir / "visuals").glob("plate-*.png"))
+
+
+@pytest.mark.skipif(
+    not any(path.exists() for path in _FONT_CANDIDATES),
+    reason="brand font not available in this environment",
+)
+def test_scene_scrim_covers_the_whole_text_block(tmp_path):
+    """Regression: in the first real Concept run the scene subline ran
+    off the scrim onto the bare photograph and was unreadable. The
+    scrim is now sized to the measured text block with a slower fade;
+    over a white plate, points at the right edge (beyond the text
+    measure, so pure scrim) must be visibly darkened deep into the
+    text zone."""
+    buf = io.BytesIO()
+    Image.new("RGB", (480, 640), (255, 255, 255)).save(buf, format="PNG")
+    row = dict(
+        SCENE_ROW,
+        topic=(
+            "How one small shop answers every customer question about "
+            "prices, delivery times and opening hours automatically, "
+            "even while the owner is asleep"
+        ),
+        angle=(
+            "Teach Myanmar and Thai SME owners to automate replies for "
+            "prices, delivery and opening hours; invite them to message "
+            "us on Messenger for the example list and a free mini-audit "
+            "of their own page this week"
+        ),
+    )
+    store, stored = _store_row(tmp_path, row)
+    updated = produce_visual(
+        store, stored,
+        image_client=_FakeImageClient(buf.getvalue()),
+        director=MockClient(),
+    )
+    img = Image.open(store.data_dir / updated["visual"]).convert("RGB")
+    w, h = img.size
+    assert img.getpixel((w - 30, int(h * 0.48)))[1] < 215
+    assert img.getpixel((w - 30, int(h * 0.59)))[1] < 250
