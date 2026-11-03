@@ -1,16 +1,23 @@
-"""Judge wiring (Model map, PR #10).
+"""Judge wiring (Model map, PR #10; judge changed 2026-11-03).
 
-Verdicts are a second model's job: Muse Spark Open on Baseten
-judges the main model's drafts. The pipeline takes an optional
-judge client; without one (no Baseten key configured), the
-drafting client gives the verdict, exactly as before. Judge calls
-run at LOW reasoning effort.
+Verdicts are Muse Wonder's job, in a dedicated judge pass: the
+owner moved every big-decision role to Wonder, so the judge is a
+Wonder client of its own (never the drafting client object), and
+the deterministic checker in code is the independent layer under
+the verdict. The pipeline takes an optional judge client; without
+one (mock mode, or meta mode with no key configured), the drafting
+client gives the verdict, exactly as before. The Baseten route
+(Muse Spark Open) stays in the code as an optional alternate; its
+verdict calls run at LOW reasoning effort.
 """
 import httpx
 import pytest
 
 from pageops.model_client import (
+    BASE_URL,
     MODEL_SPARK_OPEN,
+    MODEL_WONDER,
+    MetaModelClient,
     MockClient,
     get_baseten_client,
     get_judge_client,
@@ -52,17 +59,64 @@ def test_without_a_judge_the_drafting_client_verdicts(tmp_path):
     assert main.verdict_calls == 1
 
 
-def test_judge_client_absent_without_a_baseten_key(monkeypatch):
-    monkeypatch.delenv("BASETEN_API_KEY", raising=False)
+def test_judge_client_absent_in_mock_mode(monkeypatch):
+    monkeypatch.setenv("MODEL_MODE", "mock")
+    monkeypatch.setenv("MODEL_API_KEY", "test-key")
     assert get_judge_client() is None
 
 
-def test_judge_client_is_spark_open_at_low_reasoning(monkeypatch):
-    monkeypatch.setenv("BASETEN_API_KEY", "test-key")
+def test_judge_client_absent_without_a_meta_key(monkeypatch):
+    monkeypatch.setenv("MODEL_MODE", "meta")
+    monkeypatch.delenv("MODEL_API_KEY", raising=False)
+    assert get_judge_client() is None
+
+
+def test_judge_client_is_a_dedicated_wonder_client(monkeypatch):
+    monkeypatch.setenv("MODEL_MODE", "meta")
+    monkeypatch.setenv("MODEL_API_KEY", "test-key")
+    monkeypatch.delenv("PAGEOPS_MAIN_MODEL", raising=False)
     judge = get_judge_client()
     assert judge is not None
-    assert judge.verdict_model == MODEL_SPARK_OPEN
-    assert judge.reasoning_effort == "low"
+    assert isinstance(judge, MetaModelClient)
+    assert judge.base_url == BASE_URL
+    assert judge.verdict_model == MODEL_WONDER
+    # The Meta route is not forced into Baseten-specific settings:
+    # no reasoning_effort is sent on verdict calls.
+    assert judge.reasoning_effort is None
+
+
+def test_wonder_judge_verdict_flows_through_the_pipeline(tmp_path, monkeypatch):
+    """The factory-built Wonder judge gives the verdict end to end:
+    a [MODEL VERDICT] from the judge, not a [JUDGE FALLBACK]."""
+    monkeypatch.setenv("MODEL_MODE", "meta")
+    monkeypatch.setenv("MODEL_API_KEY", "test-key")
+    monkeypatch.setenv("PAGEOPS_DATA_DIR", str(tmp_path / "data"))
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {
+                "choices": [
+                    {"message": {"content": '{"verdict": "pass", "reasons": ["Reads clean."]}'}}
+                ],
+                "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5},
+            }
+
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: FakeResponse())
+
+    store = Store(tmp_path)
+    main = SpyClient()
+    judge = get_judge_client()
+    assert judge is not None
+    assert judge is not main
+    row = _planned_row(store)
+    updated = draft_and_check(store, main, row, judge=judge)
+    assert main.verdict_calls == 0
+    assert updated["status"] == "awaiting_approval"
+    assert "[MODEL VERDICT] pass" in updated["check_status"]
+    assert "[JUDGE FALLBACK]" not in updated["check_status"]
 
 
 def test_judge_calls_send_low_reasoning_effort(monkeypatch):
@@ -94,7 +148,7 @@ def test_judge_calls_send_low_reasoning_effort(monkeypatch):
 
 class ExplodingJudge(MockClient):
     def verdict(self, draft, check_summary):
-        raise RuntimeError("baseten timeout")
+        raise RuntimeError("judge timeout")
 
 
 def test_failing_judge_falls_back_visibly(tmp_path):
