@@ -27,7 +27,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from pageops.config import get_settings  # noqa: E402
-from pageops.model_client import MockClient, get_client, get_judge_client  # noqa: E402
+from pageops.model_client import (  # noqa: E402
+    MockClient,
+    get_client,
+    get_image_client,
+    get_judge_client,
+)
 from pageops.pipeline import process_week  # noqa: E402
 from pageops.research import fetch_research  # noqa: E402
 from pageops.store import Store  # noqa: E402
@@ -114,6 +119,7 @@ def main(argv: list[str] | None = None) -> int:
         brief_text,
         trends_fetcher=fetcher,
         judge=get_judge_client(),
+        image_client=get_image_client(),
     )
     summary = _summary(brief_text, store.read_dataset("plan"))
     _write_summary(store, summary)
