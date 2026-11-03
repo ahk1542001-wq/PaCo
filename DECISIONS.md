@@ -32,3 +32,7 @@ The Concept acceptance run exposed a vocabulary trap: Muse Wonder labelled two p
 ## Scene scrim legibility (2026-11-03)
 
 The same acceptance run showed the scene treatment's subline running off its scrim onto the bare photograph, unreadable over busy areas: the scrim was a fixed 55 percent fade while the text block it carries can extend past it. The treatment now measures the headline and angle first and sizes the scrim to the text block, with a slower fade, so every line it carries stays on the brand colour. A regression test renders a long topic and angle over a white plate and checks the scrim is still visibly present deep in the text zone.
+
+## One-glance legibility (2026-11-03)
+
+Reviewing the final run's concept poster, the owner judged the glowing orbs unreadable as messages at a glance. Concept work now carries a second rule beside integrity: one-glance legibility. A stranger must get the metaphor in one second, so the direction instruction requires every metaphor element to be drawn as the literal, instantly recognisable thing it represents (messages as envelopes or chat bubbles with tails, never abstract orbs, blobs or generic glowing shapes), and the Designer role file states the rule. An element that could be mistaken for something else fails, even when the metaphor is airtight.
