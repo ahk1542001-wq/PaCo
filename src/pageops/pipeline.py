@@ -158,6 +158,7 @@ def generate_week(
                     "angle": post.get("angle", ""),
                     "format": post.get("format", ""),
                     "character": post.get("character", ""),
+                    "visual_style": post.get("visual_style", ""),
                     "status": "planned",
                     "brief": brief_text,
                 }
@@ -232,7 +233,9 @@ def _review_tail(
     visual_ok = False
     video_note = ""
     try:
-        updated = produce_visual(store, {**item, "draft": text})
+        updated = produce_visual(
+            store, {**item, "draft": text}, image_client=image_client, director=client
+        )
         visual_note = f"[VISUAL] PASS - {updated.get('visual', '')}"
         visual_ok = True
         # The handoff chain has a named state for this moment.
