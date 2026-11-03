@@ -19,6 +19,27 @@ from pathlib import Path
 
 from .config import DEFAULT_DATA_DIR
 
+def humanize_text(client, text: str, brand_voice: dict) -> tuple[str, str]:
+    """Run a client's humanising pass, with visible degradation.
+
+    Returns (text, error): error is "" when the pass ran (or the
+    client has no pass, like a small test double) and a short
+    reason when it fell back to the unedited text. Shared by the
+    pipeline (drafts) and the report (the Analyst's Read) so the
+    two paths can never drift apart.
+    """
+    fn = getattr(client, "humanize", None)
+    if fn is None:
+        return text, ""
+    try:
+        out = fn(text, brand_voice)
+    except Exception as exc:
+        return text, str(exc)
+    if not out or not str(out).strip():
+        return text, "humaniser returned an empty rewrite"
+    return str(out).strip(), ""
+
+
 BASE_URL = "https://api.meta.ai/v1"
 BASETEN_BASE_URL = "https://inference.baseten.co/v1"
 MODEL_SPARK = "muse-spark-1.3"
@@ -310,6 +331,37 @@ class MetaModelClient:
         result = self.chat(messages, model=self.main_model)
         return result["choices"][0]["message"]["content"].strip()
 
+    def humanize(self, text: str, brand_voice: dict) -> str:
+        """The humanising pass every writer output goes through.
+
+        One rewrite in the brand's own voice (the blader/humanizer
+        skill is the named method behind this step): natural, plain,
+        warm, no AI cliches. Facts, figures, names, calls to action
+        and hashtags are preserved exactly, and the line structure
+        is kept, so a video script stays one line per beat.
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are the brand's humanising editor. Rewrite the text "
+                    "so it reads like a real person from this brand wrote it: "
+                    "natural, plain and warm, with no corporate stiffness and "
+                    "no AI cliches. Preserve every fact, figure, name, call "
+                    "to action and hashtag EXACTLY as written. Keep the same "
+                    "line breaks and the same number of lines. Never add "
+                    "claims, results, customers or testimonials that are not "
+                    "in the text. Return only the rewritten text."
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps({"text": text, "brand_voice": brand_voice}),
+            },
+        ]
+        result = self.chat(messages, model=self.main_model)
+        return result["choices"][0]["message"]["content"].strip()
+
 
 class MetaImageClient:
     """Image generation on the Meta Model API (Muse Image).
@@ -532,6 +584,13 @@ class MockClient:
             "verdict": "pass" if passed else "revise",
             "reasons": ["All deterministic brand rules passed."] if passed else [check_summary],
         }
+
+    def humanize(self, text: str, brand_voice: dict) -> str:
+        """Offline stand-in: the mock has no model, so the text
+        passes through unchanged. The pass itself is exercised in
+        tests with rewriting doubles, and in production the real
+        client rewrites in the brand voice."""
+        return text
 
 
 def get_client(settings=None):

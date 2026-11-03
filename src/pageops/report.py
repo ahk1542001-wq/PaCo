@@ -9,6 +9,7 @@ nothing here invents a figure.
 from __future__ import annotations
 
 from .metrics import compute_metrics
+from .model_client import humanize_text
 from .store import Store
 
 
@@ -70,8 +71,18 @@ def build_report(store: Store, goal: str = "", client=None) -> dict:
         # any number that is not in the stats drops the whole Read
         # line, so an invented figure can never reach the report.
         read = client.narrate(stats, brand)
+        # The Analyst is a writer too: the Read passes the same
+        # humanising pass as the drafts, BEFORE the figure check,
+        # so a rewrite that alters a number still drops the line.
+        # A failed pass is named in the narrative, never silent.
+        read, humanize_error = humanize_text(client, read, brand)
         if _figures_grounded(read, stats):
             lines.append(f"Read: {read}")
+            if humanize_error:
+                lines.append(
+                    "Humaniser note: the humanising pass was unavailable "
+                    f"({humanize_error}); the Read is shown as generated."
+                )
     if best:
         lines.append(
             f"Best post: {best['post_id']} on {best['platform']} with "

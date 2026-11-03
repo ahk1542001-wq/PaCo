@@ -37,12 +37,18 @@ code is included or presented as new.
    past performance; every trend item keeps its source link, and
    the trend notes record which backend served them.
 3. **Content plan** - a 7-day plan written against the brand-voice
-   profile, shown as cards on a kanban board.
-4. **Drafts with brand-rule checks** - every draft is checked by a
+   profile, shown as cards on a kanban board. The plan's topics
+   and angles pass the same humanising pass as the drafts: they
+   become the headline and subline on every visual.
+4. **Drafts with brand-rule checks** - every generated draft first
+   passes an automatic humanising rewrite in the brand's own voice
+   (facts and hashtags preserved exactly), then is checked by a
    deterministic rule checker (banned phrases, CTA present, platform
-   length caps, required hashtags). Each verdict quotes the draft's
-   own lines as evidence; nothing rests on the model's word alone.
-   A failing draft is revised once, then flagged for the human.
+   length caps, required hashtags). The report's model-written Read
+   passes the same humanising pass before its figures are checked.
+   Each verdict quotes the draft's own lines as evidence; nothing
+   rests on the model's word alone. A failing draft is revised
+   once, then flagged for the human.
 5. **Approval** - Approve / Reject buttons on the board. The
    scheduling layer itself refuses anything that is not approved;
    that gate is proven by an automated test.

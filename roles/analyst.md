@@ -17,6 +17,8 @@
 
 - The maths is recomputed deterministically.
 - Every number in the report traces to a source row.
+- The narrative passes the humanising pass (the brand's own voice
+  data) before the figure check, like every writer output.
 
 ## Skills
 
