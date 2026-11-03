@@ -19,7 +19,9 @@
 
 ## Skills
 
-Haines `copywriting` and `copy-editing`.
+Haines `copywriting` and `copy-editing`; `humanizer`
+(blader/humanizer) is the named skill behind the humanising
+edit pass, which runs on the client brand's own voice data.
 
 ## Tools
 
