@@ -47,6 +47,8 @@ BRAND_KEYS = (
     "brand_name", "services", "audience", "tone", "rules",
     "required_hashtags", "banned_phrases", "cta_markers",
     "character_name", "character_image", "character_rules",
+    "character_sheet", "brand_colors", "brand_fonts", "logo_usage",
+    "template_sizes", "proof_baseline",
 )
 
 
@@ -222,15 +224,35 @@ def _review_tail(
     # its evidence joins the check evidence for the human. A failed
     # visual flags the item instead of letting it through.
     visual_ok = False
+    video_note = ""
     try:
         updated = produce_visual(store, {**item, "draft": text})
         visual_note = f"[VISUAL] PASS - {updated.get('visual', '')}"
         visual_ok = True
         # The handoff chain has a named state for this moment.
         store.update_row("plan", item["id"], {"status": "visual_ready"})
+        if "short video" in (item.get("format") or "").lower():
+            # Short video rows also get the produced video (the
+            # poster stays the row's visual). A video failure flags
+            # the row exactly like a visual failure: it never
+            # reaches awaiting_approval on a broken video.
+            from .video import produce_video
+
+            try:
+                video_path, video_manifest = produce_video(
+                    store, {**item, "draft": text}
+                )
+                video_note = (
+                    f"\n[VIDEO] PASS - {video_path.name} "
+                    f"({video_manifest['qc']['duration']:.1f}s, "
+                    f"{len(video_manifest['scenes'])} scenes)"
+                )
+            except (ValueError, RuntimeError) as exc:
+                video_note = f"\n[VISUAL] FAIL - video production failed: {exc}"
+                visual_ok = False
     except (ValueError, RuntimeError) as exc:
         visual_note = f"[VISUAL] FAIL - {exc}"
-    summary += f"\n{visual_note}"
+    summary += f"\n{visual_note}{video_note}"
     status = "checked"
     if rules_passed and visual_ok:
         # Deterministic rules passed; the judge model gives the
