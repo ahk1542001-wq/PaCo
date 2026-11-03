@@ -16,6 +16,16 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+from .checker import check_character
+
+# The brand character reference in the brand-assets layer is a
+# repo-root-relative path (assets/paco-character.png). Relative
+# values resolve against the repo root only, never the caller's
+# cwd, and the resolved path must stay contained under the repo
+# root: absolute paths elsewhere and ".." traversal are treated
+# as a missing reference (see _resolve_character_reference).
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 ASSETS: dict = {
     "brand_name": "FYF AI",
     "primary": "#123B8F",
@@ -98,7 +108,75 @@ def template_for(row: dict) -> str:
     return "thumb" if "thumb" in fmt else "poster"
 
 
-def render_visual(row: dict, out_dir: Path | str) -> tuple[Path, dict]:
+def _resolve_character_reference(reference: str) -> Path | None:
+    """Resolve the brand character reference to an existing file.
+
+    Relative values resolve against the repo root only, so the
+    outcome never depends on the caller's cwd. The resolved path
+    must stay contained under the repo root (the same structural
+    containment the dashboard applies to /visual/ files): absolute
+    paths elsewhere and ".." traversal are treated as a missing
+    reference. A missing reference is a normal outcome (returns
+    None): the character is simply unavailable, and the caller
+    records that honestly.
+    """
+    if not reference:
+        return None
+    path = Path(str(reference))
+    candidate = path if path.is_absolute() else REPO_ROOT / path
+    try:
+        resolved = candidate.resolve()
+    except OSError:
+        return None
+    if not resolved.is_relative_to(REPO_ROOT.resolve()):
+        return None
+    return resolved if resolved.exists() else None
+
+
+def _composite_character_badge(img: Image.Image, reference_path: Path) -> bool:
+    """Composite the reference image as a circular badge, in place.
+
+    The reference is only ever cropped to a circle and ringed with
+    the brand accent colour; it is never redrawn or restyled.
+    Placed bottom-right, just above the footer band, at about 22%
+    of the poster width.
+
+    Returns True when the badge was composited. A reference that
+    exists but cannot be read as an image (truncated, not an image
+    at all) returns False instead of raising: the caller records
+    "reference unreadable" and the checker fails the row cleanly,
+    exactly like the missing-reference path.
+    """
+    width, height = img.size
+    diameter = max(48, round(width * 0.22))
+    ring = max(6, diameter // 18)
+    try:
+        with Image.open(reference_path) as ref:
+            ref = ref.convert("RGBA")
+            side = min(ref.size)
+            left = (ref.width - side) // 2
+            top = (ref.height - side) // 2
+            badge = ref.crop((left, top, left + side, top + side)).resize(
+                (diameter, diameter), Image.LANCZOS
+            )
+    except OSError:
+        return False
+    mask = Image.new("L", (diameter, diameter), 0)
+    ImageDraw.Draw(mask).ellipse([0, 0, diameter, diameter], fill=255)
+    x = width - diameter - 48
+    y = height - 110 - diameter - 36
+    draw = ImageDraw.Draw(img)
+    draw.ellipse(
+        [x - ring, y - ring, x + diameter + ring, y + diameter + ring],
+        fill=ASSETS["accent_rgb"],
+    )
+    img.paste(badge, (x, y), mask)
+    return True
+
+
+def render_visual(
+    row: dict, out_dir: Path | str, brand_voice: dict | None = None
+) -> tuple[Path, dict]:
     """Render the row's visual from its template. Deterministic."""
     template = template_for(row)
     width, height = TEMPLATES[template]
@@ -131,6 +209,37 @@ def render_visual(row: dict, out_dir: Path | str) -> tuple[Path, dict]:
     footer = f"{row.get('platform', '')} · {row.get('format', '')}".strip(" ·")
     draw.text((60, height - 82), footer, font=_font(40), fill=ASSETS["ink_rgb"])
 
+    # Brand character badge, only when the row calls for it and the
+    # brand's reference image actually exists. A missing or
+    # unreadable reference is recorded in the manifest, never
+    # fabricated or silently dropped. The manifest character dict
+    # always carries the same four keys.
+    character: dict = {"used": False, "requested": False, "reference": "", "reason": ""}
+    if str(row.get("character") or "").strip().lower() == "yes":
+        reference = (brand_voice or {}).get("character_image", "")
+        resolved = _resolve_character_reference(reference)
+        if resolved is None:
+            character = {
+                "used": False,
+                "requested": True,
+                "reference": reference,
+                "reason": "reference missing",
+            }
+        elif _composite_character_badge(img, resolved):
+            character = {
+                "used": True,
+                "requested": True,
+                "reference": reference,
+                "reason": "",
+            }
+        else:
+            character = {
+                "used": False,
+                "requested": True,
+                "reference": reference,
+                "reason": "reference unreadable",
+            }
+
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     name = f"visual-{row.get('id', 'row')}-{template}.png"
@@ -142,6 +251,7 @@ def render_visual(row: dict, out_dir: Path | str) -> tuple[Path, dict]:
         "wordmark": ASSETS["brand_name"],
         "headline": row.get("topic", ""),
         "path": str(path),
+        "character": character,
     }
     return path, manifest
 
@@ -178,10 +288,17 @@ def produce_visual(store, row: dict) -> dict:
     """
     if not (row.get("draft") or "").strip():
         raise ValueError("no draft on the row: visuals follow the final draft")
+    brand_voice = store.get_brand_voice()
     out_dir = store.data_dir / "visuals"
-    path, manifest = render_visual(row, out_dir)
+    path, manifest = render_visual(row, out_dir, brand_voice=brand_voice)
     ok, evidence = verify_visual(path, manifest)
     if not ok:
         raise RuntimeError(f"visual self-check failed: {evidence}")
+    # The Brand Checker's character rule, applied to this visual's
+    # manifest: a requested badge that is missing or composited from
+    # the wrong reference fails exactly like a failed visual check.
+    character_result = check_character(row, manifest, brand_voice)
+    if not character_result.passed:
+        raise RuntimeError(f"character check failed: {character_result.summary()}")
     relative = path.relative_to(store.data_dir)
     return store.update_row("plan", row["id"], {"visual": str(relative)})
