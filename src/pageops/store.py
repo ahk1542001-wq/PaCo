@@ -19,6 +19,7 @@ DATASETS: dict[str, list[str]] = {
     "plan": [
         "id", "date", "platform", "topic", "angle", "format", "status", "brief", "brief_check",
         "draft", "check_status", "visual", "reject_reason", "post_id", "buffer_id", "character",
+        "video",
     ],
     "metrics": ["date", "platform", "post_id", "reach", "engagement", "clicks", "notes"],
 }
@@ -54,7 +55,57 @@ BRAND_VOICE_SEED: dict[str, str] = {
         "image only; never redrawn or restyled; used on announcement "
         "and engagement posts."
     ),
+    "character_sheet": "assets/paco-character-sheet.png",
+    # Brand foundation values (brand-foundation-fyf-ai.md, assembled
+    # 2026-11-03 from the designer tokens, the service page plan and
+    # the case study baseline). Recorded as data so the brand record
+    # lives outside code; the owner's supplied brand files replace
+    # them in one swap when they land.
+    "brand_colors": (
+        "Primary #123B8F; Accent #F5B301; Background #F7F5F0; Ink #14213D"
+    ),
+    "brand_fonts": (
+        "Padauk, a single font family for all text (Bold, then Regular); "
+        "wordmark 64 px; headline 72 px stepping down to a 28 px minimum; "
+        "angle subline 44 px; footer line 40 px; the Pillow default bitmap "
+        "font only if Padauk is missing"
+    ),
+    "logo_usage": (
+        "Text wordmark only: the words FYF AI in white Padauk on the "
+        "primary #123B8F top band; no logo files or artwork exist; "
+        "artwork rules (clear space, minimum size, approved colourways) "
+        "are to confirm with the supplied brand files"
+    ),
+    "template_sizes": (
+        "poster 1080x1350; thumb 1080x1080; banner 1640x924; "
+        "carousel slide 1080x1080; video frame 1080x1920"
+    ),
+    "proof_baseline": (
+        "FYF AI page starting baseline (Facebook, 90 days to "
+        "31 October 2026): 15 followers; 970 views; 131 unique viewers; "
+        "44 engagements including clicks; the three posts in the "
+        "metrics store total 170 views, 13 engagements and 1 click; "
+        "a starting baseline only, not a results claim"
+    ),
 }
+
+# Brand keys added after the first seed shipped. A store whose
+# brand_voice predates any of them gets ONLY the missing keys
+# backfilled from the seed: without them, get_brand_voice returns ""
+# for the key forever (a character-marked draft would hard-fail
+# against an empty reference). Owner-edited values are never
+# overwritten: a key that is present, even blank, is left as it is.
+BACKFILL_KEYS: tuple[str, ...] = (
+    "character_name",
+    "character_image",
+    "character_rules",
+    "character_sheet",
+    "brand_colors",
+    "brand_fonts",
+    "logo_usage",
+    "template_sizes",
+    "proof_baseline",
+)
 
 
 class Store:
@@ -91,14 +142,10 @@ class Store:
         if not self.read_dataset("brand_voice"):
             for key, value in BRAND_VOICE_SEED.items():
                 self.append_row("brand_voice", {"key": key, "value": value})
-        # Backfill ONLY the character keys on a store whose
-        # brand_voice predates them: without them, get_brand_voice
-        # returns character_image "" forever and any character-
-        # marked draft would hard-fail against an empty reference.
-        # Owner-edited values are never overwritten: a key that is
-        # present (even blank) is left exactly as it is.
+        # Backfill ONLY the keys in BACKFILL_KEYS on a store whose
+        # brand_voice predates them (see the note on BACKFILL_KEYS).
         existing_keys = {row["key"] for row in self.read_dataset("brand_voice")}
-        for key in ("character_name", "character_image", "character_rules"):
+        for key in BACKFILL_KEYS:
             if key not in existing_keys:
                 self.append_row(
                     "brand_voice", {"key": key, "value": BRAND_VOICE_SEED[key]}
@@ -178,6 +225,12 @@ class Store:
             "character_name": raw.get("character_name", ""),
             "character_image": raw.get("character_image", ""),
             "character_rules": raw.get("character_rules", ""),
+            "character_sheet": raw.get("character_sheet", ""),
+            "brand_colors": raw.get("brand_colors", ""),
+            "brand_fonts": raw.get("brand_fonts", ""),
+            "logo_usage": raw.get("logo_usage", ""),
+            "template_sizes": raw.get("template_sizes", ""),
+            "proof_baseline": raw.get("proof_baseline", ""),
         }
         for key in ("banned_phrases", "cta_markers"):
             if raw.get(key, "").strip():
