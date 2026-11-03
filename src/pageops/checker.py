@@ -159,3 +159,54 @@ def check_draft(text: str, platform: str, brand_voice: dict) -> CheckResult:
         )
 
     return CheckResult(passed=all(r.passed for r in results), results=results)
+
+
+def check_character(row: dict, manifest: dict, brand_voice: dict) -> CheckResult:
+    """Deterministic check for the brand character (mascot) badge.
+
+    A row requests the character with character == "yes". The badge
+    counts only when the Designer composited it from the brand's own
+    reference image: the manifest must record the use, and the
+    recorded reference must equal the brand-assets layer's value.
+    Anything else fails with the gap named as evidence, so a missing
+    or substituted reference can never slip through silently.
+    """
+    if str(row.get("character") or "").strip().lower() != "yes":
+        return CheckResult(
+            passed=True,
+            results=[
+                RuleResult(
+                    rule="character",
+                    passed=True,
+                    evidence="character not required for this post",
+                )
+            ],
+        )
+    expected = (brand_voice or {}).get("character_image", "")
+    char = (manifest or {}).get("character") or {}
+    if char.get("used") is True and expected and char.get("reference", "") == expected:
+        return CheckResult(
+            passed=True,
+            results=[
+                RuleResult(
+                    rule="character",
+                    passed=True,
+                    evidence=f"badge composited from brand reference {_quote(expected)}",
+                )
+            ],
+        )
+    if char.get("used") is True:
+        evidence = (
+            f"character reference mismatch: manifest used "
+            f"{_quote(char.get('reference', ''))} but the brand reference is {_quote(expected)}"
+        )
+    else:
+        reason = char.get("reason", "badge not used")
+        evidence = (
+            f"character requested but not used: {reason}; "
+            f"brand reference is {_quote(expected)}"
+        )
+    return CheckResult(
+        passed=False,
+        results=[RuleResult(rule="character", passed=False, evidence=evidence)],
+    )
