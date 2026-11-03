@@ -18,7 +18,7 @@ DATASETS: dict[str, list[str]] = {
     "brand_voice": ["key", "value"],
     "plan": [
         "id", "date", "platform", "topic", "angle", "format", "status", "brief", "brief_check",
-        "draft", "check_status", "visual", "reject_reason", "post_id", "buffer_id",
+        "draft", "check_status", "visual", "reject_reason", "post_id", "buffer_id", "character",
     ],
     "metrics": ["date", "platform", "post_id", "reach", "engagement", "clicks", "notes"],
 }
@@ -46,6 +46,13 @@ BRAND_VOICE_SEED: dict[str, str] = {
     "cta_markers": (
         "message us; send us a message; dm us; contact us; get started; "
         "book a; book your; learn more; sign up; call us; chat with us"
+    ),
+    "character_name": "PaCo",
+    "character_image": "assets/paco-character.png",
+    "character_rules": (
+        "PaCo appears as a circular badge composited from the reference "
+        "image only; never redrawn or restyled; used on announcement "
+        "and engagement posts."
     ),
 }
 
@@ -84,6 +91,18 @@ class Store:
         if not self.read_dataset("brand_voice"):
             for key, value in BRAND_VOICE_SEED.items():
                 self.append_row("brand_voice", {"key": key, "value": value})
+        # Backfill ONLY the character keys on a store whose
+        # brand_voice predates them: without them, get_brand_voice
+        # returns character_image "" forever and any character-
+        # marked draft would hard-fail against an empty reference.
+        # Owner-edited values are never overwritten: a key that is
+        # present (even blank) is left exactly as it is.
+        existing_keys = {row["key"] for row in self.read_dataset("brand_voice")}
+        for key in ("character_name", "character_image", "character_rules"):
+            if key not in existing_keys:
+                self.append_row(
+                    "brand_voice", {"key": key, "value": BRAND_VOICE_SEED[key]}
+                )
 
     def read_dataset(self, dataset: str) -> list[dict[str, str]]:
         with self._path(dataset).open(newline="", encoding="utf-8") as fh:
@@ -156,6 +175,9 @@ class Store:
             "required_hashtags": [
                 h.strip() for h in raw.get("required_hashtags", "").split(";") if h.strip()
             ],
+            "character_name": raw.get("character_name", ""),
+            "character_image": raw.get("character_image", ""),
+            "character_rules": raw.get("character_rules", ""),
         }
         for key in ("banned_phrases", "cta_markers"):
             if raw.get(key, "").strip():
