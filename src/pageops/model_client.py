@@ -121,11 +121,135 @@ class MetaModelClient:
         if trends:
             payload["trends"] = trends
         return self._structured(
-            "Create a 7-day content plan as JSON: {posts: [{day, platform, topic, angle, format, character}]}. "
-            "Set character to \"yes\" only for announcement or engagement posts where a mascot presenter fits; otherwise leave it empty.",
+            "Create a 7-day content plan as JSON: {posts: [{day, platform, topic, angle, format, character, visual_style}]}. "
+            "Set character to \"yes\" only for announcement or engagement posts where a mascot presenter fits; otherwise leave it empty. "
+            "Set visual_style to \"scene\" for announcements, education and brand posts, and to \"concept\" when the post "
+            "carries a single sharp benefit or pain message; leave it empty for text-only posts.",
             payload,
             self.main_model,
         )
+
+    def direct_visual(
+        self, plan_item: dict, draft_text: str, brand_voice: dict, style: str
+    ) -> dict:
+        """Art-direct one still visual: a concept line + an image prompt.
+
+        Wonder decides, others execute: this method only directs.
+        The Designer generates one plate from the prompt (Muse
+        Image) and renders every word in code. The reply is parsed
+        defensively: anything but a JSON object with a non-empty
+        concept and prompt raises, and the caller falls back to the
+        brand template.
+        """
+        colours = brand_voice.get("brand_colors") or "the brand colours in the brand data"
+        character = ""
+        if str(plan_item.get("character") or "").strip().lower() == "yes":
+            character = (
+                f" The plan item is character-marked: include the brand character "
+                f"({brand_voice.get('character_name') or 'the brand mascot'}) in the scene."
+            )
+        if style == "concept":
+            instruction = (
+                "Direct one still visual in the concept style (conceptual advertising). "
+                "Reply with JSON only: {concept, prompt, no_exceptions}. "
+                "concept: one line naming the single visual metaphor that carries the "
+                "post's one benefit or pain message. Metaphor first: one object, one "
+                "scene, one idea. "
+                "no_exceptions: one line, written in the metaphor's own terms, stating "
+                "that the metaphor is airtight: every instance of the metaphor element "
+                "is handled by the protective action, none appears outside it, and the "
+                "protected subject sits fully inside the safe zone. "
+                "prompt: write the image prompt as a professional conceptual-ad prompt "
+                "in exactly these sections, each labelled on its own line: Concept / "
+                "Composition / Subject / Setting / Camera and style / Constraints. "
+                "The Constraints section must include: no text, no letters, no logos, "
+                "no watermark, clean negative space for a headline, and a No exceptions "
+                "clause that repeats the no_exceptions line: if any element escapes "
+                "the protective action, the image contradicts the claim. "
+                f"Brand colours: {colours}.{character}"
+            )
+        else:
+            instruction = (
+                "Direct one still visual in the scene style. "
+                "Reply with JSON only: {concept, prompt}. "
+                "concept: one line naming the scene idea. "
+                "prompt: describe a rich, warm scene set in the brand's world, drawn "
+                "from the post topic and draft: name the brand colours "
+                f"({colours}) in the prompt, set the mood from the message, and "
+                "reserve clean, calm space in the top third of the frame for a "
+                "headline. The prompt must forbid text and logos: include the words "
+                f"\"no text\" and \"no logos\" in the prompt.{character}"
+            )
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are PageOps Agent's art director for the Graphic "
+                    "Designer. Reply with JSON only."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"{instruction}\n\nInput:\n"
+                    + json.dumps(
+                        {
+                            "plan_item": plan_item,
+                            "draft_text": draft_text,
+                            "brand_voice": brand_voice,
+                            "style": style,
+                        }
+                    )
+                ),
+            },
+        ]
+        result = self.chat(messages, model=self.main_model)
+        text = result["choices"][0]["message"]["content"].strip()
+        if text.startswith("```"):
+            lines = text.splitlines()[1:]
+            if lines and lines[-1].strip().startswith("```"):
+                lines = lines[:-1]
+            text = "\n".join(lines).strip()
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"direct_visual: reply is not JSON ({exc})") from exc
+        if not isinstance(data, dict):
+            raise ValueError("direct_visual: reply is not a JSON object")
+        concept = str(data.get("concept") or "").strip()
+        prompt = str(data.get("prompt") or "").strip()
+        no_exceptions = str(data.get("no_exceptions") or "").strip()
+        if not concept or not prompt:
+            raise ValueError("direct_visual: reply missing concept or prompt")
+        lowered = prompt.lower()
+        if "no text" not in lowered or "no logo" not in lowered:
+            raise ValueError("direct_visual: prompt does not forbid text and logos")
+        if style == "concept":
+            for header in (
+                "concept",
+                "composition",
+                "subject",
+                "setting",
+                "camera and style",
+                "constraints",
+            ):
+                if header not in lowered:
+                    raise ValueError(
+                        f"direct_visual: concept prompt missing section: {header}"
+                    )
+            if "no letters" not in lowered or "no watermark" not in lowered:
+                raise ValueError(
+                    "direct_visual: concept prompt must forbid letters and watermarks"
+                )
+            if not no_exceptions:
+                raise ValueError(
+                    "direct_visual: concept reply missing the no-exceptions line"
+                )
+            if "no exception" not in lowered:
+                raise ValueError(
+                    "direct_visual: concept prompt missing the No exceptions clause"
+                )
+        return {"concept": concept, "prompt": prompt, "no_exceptions": no_exceptions}
 
     def generate_draft(self, plan_item: dict, brand_voice: dict) -> dict:
         instruction = (
@@ -251,6 +375,7 @@ class MockClient:
                     "angle": "Relatable problem, then the fix",
                     "format": "Short video",
                     "character": "yes",
+                    "visual_style": "scene",
                 },
                 {
                     "day": "Wed",
@@ -258,6 +383,7 @@ class MockClient:
                     "topic": "Three follow-ups that rescue a lost lead",
                     "angle": "Practical tips from the CRM & Lead Follow-Up Pack",
                     "format": "Carousel",
+                    "visual_style": "scene",
                 },
                 {
                     "day": "Tue",
@@ -265,6 +391,7 @@ class MockClient:
                     "topic": "Before and after: one inbox, zero missed price questions",
                     "angle": "Show the saved replies, then the offer",
                     "format": "Poster",
+                    "visual_style": "concept",
                 },
                 {
                     "day": "Thu",
@@ -273,6 +400,7 @@ class MockClient:
                     "angle": "Checklist the owner can test tonight",
                     "format": "Carousel",
                     "character": "yes",
+                    "visual_style": "scene",
                 },
                 {
                     "day": "Fri",
@@ -287,6 +415,7 @@ class MockClient:
                     "topic": "Weekend orders while the shop is closed",
                     "angle": "The bot takes the order, the owner confirms later",
                     "format": "Short video",
+                    "visual_style": "scene",
                 },
                 {
                     "day": "Sun",
@@ -294,6 +423,7 @@ class MockClient:
                     "topic": "This week in your page inbox, in one report",
                     "angle": "Tease the weekly performance report",
                     "format": "Poster",
+                    "visual_style": "concept",
                 },
             ],
         }
@@ -329,6 +459,55 @@ class MockClient:
             "text": text,
             "hashtags": ["#FYFAI", "#AIAutomation", "#SME"],
         }
+
+    def direct_visual(
+        self, plan_item: dict, draft_text: str, brand_voice: dict, style: str
+    ) -> dict:
+        """Deterministic direction for both visual styles, offline."""
+        brand = brand_voice.get("brand_name", "the brand")
+        topic = plan_item.get("topic", "the post")
+        colours = (
+            brand_voice.get("brand_colors")
+            or "Primary #123B8F; Accent #F5B301; Background #F7F5F0; Ink #14213D"
+        )
+        if style == "concept":
+            concept = (
+                f"Visual metaphor for \"{topic}\": the post's one message as a "
+                "single bold object in a single scene."
+            )
+            no_exceptions = (
+                "No exceptions: every instance of the metaphor element is inside "
+                "the protective action, none appears outside it, and the protected "
+                "subject sits fully inside the safe zone."
+            )
+            prompt = (
+                f"Concept: one visual metaphor carrying the message of \"{topic}\" "
+                f"for {brand}, in the brand colours ({colours}).\n"
+                "Composition: one bold central object, generous clean negative "
+                "space in the top third for a headline.\n"
+                "Subject: the metaphor object only, rendered large and sharp.\n"
+                "Setting: a plain studio setting in the brand colours, nothing "
+                "competing with the subject.\n"
+                "Camera and style: straight-on product photography, soft even "
+                "light, high detail.\n"
+                "Constraints: no text, no letters, no logos, no watermark, clean "
+                f"negative space for a headline. {no_exceptions}"
+            )
+            return {"concept": concept, "prompt": prompt, "no_exceptions": no_exceptions}
+        character = ""
+        if str(plan_item.get("character") or "").strip().lower() == "yes":
+            character = (
+                f" Include {brand_voice.get('character_name') or 'the brand character'}, "
+                "the brand character, presenting the scene."
+            )
+        concept = f"Scene: \"{topic}\" brought to life inside the {brand} brand world."
+        prompt = (
+            f"A rich, warm scene for {brand} on the theme \"{topic}\", in the brand "
+            f"colours ({colours}).{character} Friendly small-business setting, soft "
+            "evening light, clean calm space in the top third of the frame for a "
+            "headline. No text, no letters, no logos, no watermark."
+        )
+        return {"concept": concept, "prompt": prompt, "no_exceptions": ""}
 
     def narrate(self, stats: dict, brand_voice: dict) -> str:
         totals = stats.get("totals", {})

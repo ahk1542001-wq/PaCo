@@ -52,6 +52,22 @@ code is included or presented as new.
    goal, strategy, execution, result shape that cites only numbers
    present in the metrics store.
 
+**Visuals (Graphic Designer).** Each post's visual is produced
+from the brand templates by default. When the live model clients
+are configured, the Designer also produces generated-scene stills:
+the plan marks each visual item with a style, the planner model
+art-directs a concept line and an image prompt, Muse Image
+generates one plate, and the Designer composites the typography
+in code over it (generated images never carry the text). Scene
+style suits announcements, education and brand posts and carries
+the full headline treatment. Concept style suits a single sharp
+benefit or pain message: one visual metaphor, a sectioned
+conceptual-ad prompt with an explicit no-exceptions constraint
+in the metaphor's own terms, and minimal type (one headline line
+plus the wordmark). For carousels the plate applies to slide 1
+only. Any failure in direction or generation falls back to the
+template render and is recorded in the visual's manifest.
+
 ## Architecture
 
 ```

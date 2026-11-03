@@ -19,7 +19,7 @@ DATASETS: dict[str, list[str]] = {
     "plan": [
         "id", "date", "platform", "topic", "angle", "format", "status", "brief", "brief_check",
         "draft", "check_status", "visual", "reject_reason", "post_id", "buffer_id", "character",
-        "video",
+        "video", "visual_style",
     ],
     "metrics": ["date", "platform", "post_id", "reach", "engagement", "clicks", "notes"],
 }
