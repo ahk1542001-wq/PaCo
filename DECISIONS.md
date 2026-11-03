@@ -28,3 +28,7 @@ One page. Produced by the M1 alignment pass (Pocock `grill-with-docs`) over the 
 ## Video format vocabulary (2026-11-03)
 
 The Concept acceptance run exposed a vocabulary trap: Muse Wonder labelled two plan rows "video" instead of "Short video", and every video trigger matched the exact phrase "short video", so those rows silently received poster visuals only. The planner's format names are not constrained, so the triggers now match any format containing "video" (pipeline review tail, the Meta draft instruction, and the mock client). A regression test pins a plain "video" row producing a video.
+
+## Scene scrim legibility (2026-11-03)
+
+The same acceptance run showed the scene treatment's subline running off its scrim onto the bare photograph, unreadable over busy areas: the scrim was a fixed 55 percent fade while the text block it carries can extend past it. The treatment now measures the headline and angle first and sizes the scrim to the text block, with a slower fade, so every line it carries stays on the brand colour. A regression test renders a long topic and angle over a white plate and checks the scrim is still visibly present deep in the text zone.
