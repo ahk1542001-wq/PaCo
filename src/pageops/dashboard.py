@@ -173,6 +173,13 @@ def _card(row: dict[str, str]) -> str:
             f'<img class="poster" src="/visual/{html.escape(name)}" '
             'alt="Post visual">'
         )
+    if row.get("video"):
+        video_name = row["video"].split("/")[-1]
+        extras += (
+            f'<div class="meta">Video: '
+            f'<a href="/visual/{html.escape(video_name)}">'
+            f"{html.escape(video_name)}</a></div>"
+        )
     if row.get("brief_check"):
         extras += f'<div class="meta">Brief check: {html.escape(row["brief_check"])}</div>'
     if row.get("reject_reason"):
@@ -292,12 +299,13 @@ def make_handler(store: Store):
                 from urllib.parse import unquote as _unquote
 
                 name = _unquote(self.path[len("/visual/"):])
-                # Only poster files directly under visuals/, no traversal.
+                # Only media files directly under visuals/, no traversal.
+                is_mp4 = name.endswith(".mp4")
                 visuals_dir = (store.data_dir / "visuals").resolve()
                 target = visuals_dir / name
                 if (
                     name != _Path(name).name
-                    or not name.endswith(".png")
+                    or not (name.endswith(".png") or is_mp4)
                     or not target.exists()
                     # Containment is structural: a symlink inside
                     # visuals/ pointing outside is refused too.
@@ -306,9 +314,14 @@ def make_handler(store: Store):
                     self.send_response(404)
                     self.end_headers()
                     return
+                # Deliberate limit: the file is read whole and
+                # served without Range support; acceptable for the
+                # short clips this board serves.
                 data = target.read_bytes()
                 self.send_response(200)
-                self.send_header("Content-Type", "image/png")
+                self.send_header(
+                    "Content-Type", "video/mp4" if is_mp4 else "image/png"
+                )
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
