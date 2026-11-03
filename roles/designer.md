@@ -18,8 +18,16 @@
 
 ## Skills
 
-`canvas-design` and `theme-factory` (design method); the brand
-guidelines held in the brand-assets layer govern every render.
+The full international graphic-design stack: `logo-design`,
+`brand-identity`, `brand-style-guide`, `canvas-design`,
+`theme-factory`, `art-direction`, `creative-direction`,
+`design-system`, `design-md`, `poster-studio`,
+`ads-creative-development`, `frontend-design` (design method),
+plus `ui-ux-pro-max-skill` (design intelligence), `taste-skill`
+(art direction, anti-generic visuals) and `impeccable` (design
+critique and audit);
+the brand guidelines held in the brand-assets layer govern
+every render.
 
 ## Tools
 

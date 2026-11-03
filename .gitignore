@@ -5,3 +5,4 @@ __pycache__/
 .pytest_cache/
 data/usage_log.jsonl
 data-real-dev/
+data-real-*/
