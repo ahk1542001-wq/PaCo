@@ -240,7 +240,7 @@ def _review_tail(
         visual_ok = True
         # The handoff chain has a named state for this moment.
         store.update_row("plan", item["id"], {"status": "visual_ready"})
-        if "short video" in (item.get("format") or "").lower():
+        if "video" in (item.get("format") or "").lower():
             # Short video rows also get the produced video (the
             # poster stays the row's visual). A video failure flags
             # the row exactly like a visual failure: it never
