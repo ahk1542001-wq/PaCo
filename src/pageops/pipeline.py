@@ -46,6 +46,7 @@ BRIEF_FIELDS = ("goal", "offer", "dates", "notes")
 BRAND_KEYS = (
     "brand_name", "services", "audience", "tone", "rules",
     "required_hashtags", "banned_phrases", "cta_markers",
+    "character_name", "character_image", "character_rules",
 )
 
 
@@ -154,6 +155,7 @@ def generate_week(
                     "topic": post.get("topic", ""),
                     "angle": post.get("angle", ""),
                     "format": post.get("format", ""),
+                    "character": post.get("character", ""),
                     "status": "planned",
                     "brief": brief_text,
                 }
