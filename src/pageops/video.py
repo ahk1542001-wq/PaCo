@@ -19,6 +19,7 @@ import math
 import os
 import shutil
 import subprocess
+from io import BytesIO
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -53,21 +54,31 @@ def seconds_per_scene() -> float:
     return min(30.0, max(0.2, value))
 
 
-def storyboard_for(row: dict, brand_voice: dict | None = None) -> list[dict]:
-    """Split the row's draft into a storyboard of up to 4 scenes.
+# The four middle beats, in order. The draft's points map onto
+# them one to one; a draft with fewer points simply has fewer
+# middle scenes.
+_BEAT_KINDS = ("pain", "reveal", "demo", "proof")
 
-    Scene 1 is the hook (the topic). The middle scenes are the
-    draft's points (see designer.split_points). The final scene is
-    the call to action and serves as the end card: the draft's own
-    CTA sentence when it has one, else the standing brand CTA line.
+
+def storyboard_for(row: dict, brand_voice: dict | None = None) -> list[dict]:
+    """Split the row's draft into a storyboard in the six-beat order.
+
+    The beat order is the owner's UGC script structure: hook, pain,
+    reveal, demo, proof, cta. Scene 1 is the hook (the topic). The
+    draft's points (see designer.split_points), minus the CTA
+    sentence, map in order onto the four middle beats, at most
+    four points; fewer points means fewer middle beats. The final
+    scene is the call to action and serves as the end card: the
+    draft's own CTA sentence when it has one, else the standing
+    brand CTA line. The minimum storyboard is hook + cta.
     Deterministic: the same draft always yields the same storyboard.
     """
     draft = row.get("draft", "")
     cta = cta_sentence(draft, brand_voice)
     points = [p for p in split_points(draft) if p != cta]
     scenes: list[dict] = [{"index": 1, "kind": "hook", "text": row.get("topic", "")}]
-    for point in points[:2]:
-        scenes.append({"index": len(scenes) + 1, "kind": "point", "text": point})
+    for kind, point in zip(_BEAT_KINDS, points[:4]):
+        scenes.append({"index": len(scenes) + 1, "kind": kind, "text": point})
     scenes.append(
         {
             "index": len(scenes) + 1,
@@ -78,22 +89,71 @@ def storyboard_for(row: dict, brand_voice: dict | None = None) -> list[dict]:
     return scenes
 
 
+def _plate_background(plate_path: Path | str) -> Image.Image:
+    """A generated plate as a scene background.
+
+    Cover-cropped to the vertical frame, then blended with the
+    primary colour at 45% so caption text stays legible over any
+    plate the model returns.
+    """
+    with Image.open(plate_path) as img:
+        plate = img.convert("RGB")
+    scale = max(VIDEO_SIZE[0] / plate.width, VIDEO_SIZE[1] / plate.height)
+    resized = plate.resize(
+        (
+            max(VIDEO_SIZE[0], round(plate.width * scale)),
+            max(VIDEO_SIZE[1], round(plate.height * scale)),
+        ),
+        Image.LANCZOS,
+    )
+    x = (resized.width - VIDEO_SIZE[0]) // 2
+    y = (resized.height - VIDEO_SIZE[1]) // 2
+    cropped = resized.crop((x, y, x + VIDEO_SIZE[0], y + VIDEO_SIZE[1]))
+    overlay = Image.new("RGB", VIDEO_SIZE, ASSETS["primary_rgb"])
+    return Image.blend(cropped, overlay, 0.45)
+
+
+def _save_plate(raw: bytes, out_dir: Path, row: dict) -> Path:
+    """Store generated plate bytes as a PNG in the visuals dir.
+
+    The image API's payload may be WebP bytes despite any .png
+    naming, so the bytes always go through PIL and come out as a
+    real PNG.
+    """
+    path = out_dir / f"plate-{row.get('id', 'row')}.png"
+    tmp = out_dir / f"plate-{row.get('id', 'row')}.tmp.png"
+    with Image.open(BytesIO(raw)) as img:
+        img.convert("RGB").save(tmp)
+    os.replace(tmp, path)
+    return path
+
+
 def render_scene_frame(
-    scene: dict, row: dict, out_dir: Path | str, brand_voice: dict | None = None
+    scene: dict,
+    row: dict,
+    out_dir: Path | str,
+    brand_voice: dict | None = None,
+    plate_path: Path | str | None = None,
 ) -> tuple[Path, dict]:
     """Render one vertical scene frame (1080x1920) in the brand style.
 
     Returns the frame path and the manifest character dict for the
-    frame. The character badge rides on the hook and end-card
-    scenes when the row calls for it (the same placement family as
-    the other formats). The end card is set on the primary colour.
+    frame. The character badge rides on the hook, reveal and
+    end-card scenes when the row calls for it (the same placement
+    family as the other formats). The reveal and end-card scenes
+    are set on the primary colour; when a generated plate is
+    supplied, the reveal renders over the plate instead.
     """
     width, height = VIDEO_SIZE
-    is_end_card = scene.get("kind") == "cta"
-    background = ASSETS["primary_rgb"] if is_end_card else ASSETS["background_rgb"]
-    img = Image.new("RGB", (width, height), background)
+    kind = scene.get("kind")
+    is_card = kind in ("cta", "reveal")
+    if kind == "reveal" and plate_path is not None:
+        img = _plate_background(plate_path)
+    else:
+        background = ASSETS["primary_rgb"] if is_card else ASSETS["background_rgb"]
+        img = Image.new("RGB", (width, height), background)
     draw = ImageDraw.Draw(img)
-    if is_end_card:
+    if is_card:
         draw.text(
             (60, 120),
             ASSETS["brand_name"],
@@ -121,7 +181,7 @@ def render_scene_frame(
     draw.text((60, height - 102), footer, font=_font(44), fill=ASSETS["ink_rgb"])
 
     character: dict = {"used": False, "requested": False, "reference": "", "reason": ""}
-    if scene.get("kind") in ("hook", "cta"):
+    if kind in ("hook", "cta", "reveal"):
         diameter, badge_x, badge_y = _badge_placement(width, height, footer=140)
         character = _apply_character(
             img, row, brand_voice, diameter=diameter, x=badge_x, y=badge_y
@@ -251,7 +311,7 @@ def qc_video(path: Path | str) -> dict:
     return result
 
 
-def produce_video(store, row: dict) -> tuple[Path, dict]:
+def produce_video(store, row: dict, image_client=None) -> tuple[Path, dict]:
     """Produce + QC the short video for a drafted row; store its path.
 
     Mirrors designer.produce_visual: refuses rows without a final
@@ -260,6 +320,13 @@ def produce_video(store, row: dict) -> tuple[Path, dict]:
     so the pipeline flags the row exactly like a visual failure.
     Returns (mp4 path, manifest) with scenes, frames and the QC
     record.
+
+    When an image client is supplied and the storyboard has a
+    reveal scene, one generated plate (Muse Image) is rendered
+    under that scene. The plate is decoration, never a dependency:
+    any failure in generating or rendering it is recorded in the
+    manifest's plate dict and the reveal falls back to the
+    template render, so a plate failure never fails the video.
     """
     if not (row.get("draft") or "").strip():
         raise ValueError("no draft on the row: videos follow the final draft")
@@ -271,10 +338,45 @@ def produce_video(store, row: dict) -> tuple[Path, dict]:
     for stale in out_dir.glob(f"video-{row.get('id', 'row')}-frame-*.png"):
         stale.unlink(missing_ok=True)
     scenes = storyboard_for(row, brand_voice)
+    plate: dict = {"used": False, "scene": "", "reason": "no image client configured"}
+    plate_path: Path | None = None
+    if image_client is not None:
+        if not any(scene["kind"] == "reveal" for scene in scenes):
+            plate["reason"] = "storyboard has no reveal scene"
+        else:
+            brand_name = brand_voice.get("brand_name") or ASSETS["brand_name"]
+            prompt = (
+                "A bright, friendly small-business shop scene in deep blue "
+                "and gold brand colours, vertical composition with clear "
+                "space in the upper half for text. No text, no words, no "
+                f"letters in the image. Theme: {row.get('topic', '')} "
+                f"({brand_name})."
+            )
+            try:
+                raw = image_client.generate_image_bytes(prompt)
+                plate_path = _save_plate(raw, out_dir, row)
+                plate = {"used": True, "scene": "reveal", "reason": ""}
+            except Exception as exc:
+                plate["reason"] = f"plate generation failed: {exc}"
     frames: list[Path] = []
     character: dict = {"used": False, "requested": False, "reference": "", "reason": ""}
     for scene in scenes:
-        frame, frame_character = render_scene_frame(scene, row, out_dir, brand_voice)
+        scene_plate = plate_path if scene["kind"] == "reveal" else None
+        try:
+            frame, frame_character = render_scene_frame(
+                scene, row, out_dir, brand_voice, plate_path=scene_plate
+            )
+        except Exception as exc:
+            if scene_plate is None:
+                raise
+            plate = {
+                "used": False,
+                "scene": "",
+                "reason": f"plate rendering failed: {exc}",
+            }
+            frame, frame_character = render_scene_frame(
+                scene, row, out_dir, brand_voice
+            )
         frames.append(frame)
         if scene["index"] == 1:
             character = frame_character
@@ -309,6 +411,7 @@ def produce_video(store, row: dict) -> tuple[Path, dict]:
         "path": str(out_path),
         "seconds_per_scene": seconds,
         "character": character,
+        "plate": plate,
     }
     relative = out_path.relative_to(store.data_dir)
     store.update_row("plan", row["id"], {"video": str(relative)})
