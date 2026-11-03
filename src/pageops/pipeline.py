@@ -38,6 +38,7 @@ from __future__ import annotations
 
 from .checker import check_draft
 from .designer import produce_visual
+from .model_client import humanize_text
 from .store import Store
 
 
@@ -149,13 +150,40 @@ def generate_week(
     )
     rows = []
     for post in plan.get("posts", []):
+        # The Strategist is a writer too: the topic and angle are
+        # model-written and become the headline and subline on
+        # every visual, so they pass the humanising pass before
+        # they are stored. One call carries both lines; the line
+        # structure the pass promises is what maps them back.
+        topic = post.get("topic", "")
+        angle = post.get("angle", "")
+        plan_error = ""
+        parts = [p for p in (topic, angle) if p and p.strip()]
+        if parts:
+            combined, plan_error = humanize_text(client, "\n".join(parts), brand)
+            lines = [ln.strip() for ln in combined.splitlines() if ln.strip()]
+            if not plan_error and len(lines) == len(parts):
+                if len(parts) == 2:
+                    topic, angle = lines
+                elif topic:
+                    topic = lines[0]
+                else:
+                    angle = lines[0]
+            elif not plan_error:
+                plan_error = "humaniser changed the plan text structure"
         rows.append(
             store.add_plan_row(
                 {
                     "date": post.get("day", ""),
                     "platform": post.get("platform", ""),
-                    "topic": post.get("topic", ""),
-                    "angle": post.get("angle", ""),
+                    "topic": topic,
+                    "angle": angle,
+                    "brief_check": (
+                        f"[HUMANIZER FALLBACK] plan text pass unavailable "
+                        f"({plan_error})"
+                        if plan_error
+                        else ""
+                    ),
                     "format": post.get("format", ""),
                     "character": post.get("character", ""),
                     "visual_style": post.get("visual_style", ""),
@@ -178,7 +206,8 @@ def _full_text(draft: dict) -> str:
 def draft_and_check(
     store: Store, client, row: dict, judge=None, image_client=None
 ) -> dict:
-    """Draft one plan item, run the checker, revise once on failure.
+    """Draft one plan item, humanise it, run the checker, revise
+    once on failure.
 
     Ends with status awaiting_approval (checks passed) or checked
     (still failing after the single revision, flagged for the human).
@@ -188,13 +217,21 @@ def draft_and_check(
     item = dict(row)
     draft = client.generate_draft(item, brand)
     text = _full_text(draft)
+    text, humanize_error = humanize_text(client, text, brand)
     result = check_draft(text, item.get("platform", ""), brand)
     if not result.passed:
         item["revision_feedback"] = result.summary()
         draft = client.generate_draft(item, brand)
         text = _full_text(draft)
+        text, revision_error = humanize_text(client, text, brand)
+        humanize_error = humanize_error or revision_error
         result = check_draft(text, item.get("platform", ""), brand)
     summary = result.summary()
+    if humanize_error:
+        summary += (
+            f"\n[HUMANIZER FALLBACK] humanising pass unavailable "
+            f"({humanize_error}); draft checked as generated"
+        )
     # The draft now exists: record it before the check completes, so
     # the board's Drafted column and the write log show the real
     # progression instead of a jump from planned to checked.
