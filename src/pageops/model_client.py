@@ -256,7 +256,7 @@ class MetaModelClient:
             "Write one post caption as JSON: {platform, text, hashtags: []}. "
             "Follow the brand rules."
         )
-        if "short video" in (plan_item.get("format") or "").lower():
+        if "video" in (plan_item.get("format") or "").lower():
             # Wonder directs the video: the draft text IS the
             # storyboard script, one caption line per beat in the
             # owner's UGC order (the storyboard adds the hook from
@@ -430,7 +430,7 @@ class MockClient:
 
     def generate_draft(self, plan_item: dict, brand_voice: dict) -> dict:
         topic = plan_item.get("topic", "our latest service")
-        if "short video" in (plan_item.get("format") or "").lower():
+        if "video" in (plan_item.get("format") or "").lower():
             # Beat-structured like the real client's directed
             # script: pain, reveal, demo, proof, then the CTA line,
             # one line per beat, so mock runs exercise all six
