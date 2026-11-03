@@ -111,6 +111,12 @@ def test_assemble_and_qc_roundtrip(tmp_path):
 
 
 def test_qc_rejects_missing_and_non_video_files(tmp_path):
+    if shutil.which("ffprobe") is None:
+        # Without ffprobe the QC step cannot run at all: it must say so
+        # honestly (a clear RuntimeError) instead of faking a result.
+        with pytest.raises(RuntimeError, match="ffprobe not available"):
+            qc_video(tmp_path / "nope.mp4")
+        return
     missing = qc_video(tmp_path / "nope.mp4")
     assert missing["valid"] is False
     assert missing["has_video"] is False
