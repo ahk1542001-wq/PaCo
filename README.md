@@ -15,6 +15,17 @@ utility calls. Brand verdicts are judged by **Muse Spark Open**
 through Baseten (`BASETEN_API_KEY`) when configured, an open-weights
 route on Meta's own model, falling back to Wonder when it is not.
 
+## Built during the event window
+
+All code in this repository was written during the event window
+(26 Oct to 4 Nov 2026); the first commit is dated 1 Nov 2026 and
+the git history is the audit trail. What existed before the event
+is data and brand, not code: the FYF AI page and brand (the demo
+brand), its brand-voice profile, and its past performance metrics.
+Third-party building blocks are declared dependencies (httpx,
+feedparser, Pillow) and the Padauk font. No pre-existing project
+code is included or presented as new.
+
 ## Pipeline
 
 1. **Brief** - a short form on the dashboard (goal, offer, dates).
