@@ -15,6 +15,7 @@ import pytest
 from PIL import Image
 
 from pageops.designer import (
+    _FONT_CANDIDATES,
     ASSETS,
     TEMPLATES,
     direct_plate,
@@ -425,6 +426,10 @@ def test_mock_week_stays_hermetic_and_stores_styles(tmp_path):
     assert not list((store.data_dir / "visuals").glob("plate-*.png"))
 
 
+@pytest.mark.skipif(
+    not any(path.exists() for path in _FONT_CANDIDATES),
+    reason="brand font not available in this environment",
+)
 def test_scene_scrim_covers_the_whole_text_block(tmp_path):
     """Regression: in the first real Concept run the scene subline ran
     off the scrim onto the bare photograph and was unreadable. The
