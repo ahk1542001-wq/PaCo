@@ -60,7 +60,7 @@ package, handed up through the approval gate.
 | Strategist / Researcher | `research.py`, `rss.py`, `pipeline.fetch_trends`, `pipeline.generate_week` | Owns trend + competitor research with sources, and the 7-day plan built on it. Stops: no final copy or visuals, no approvals. Self-check: every claim sourced; plan re-read against brand voice + own numbers | gtm-fleet `content-researcher`; Haines `customer-research` + `content-strategy`; gtm-fleet `campaign-plan` | Agent-Reach web search (optional, when the CLI is installed), RSS feeds (5) as the fallback, feedparser, page insights (read-only), metrics store, Meta Model API (Wonder) |
 | Copywriter | `pipeline.draft_and_check` | Owns captions + hashtags in the brand voice, and the one revision. Stops: cannot pass or approve its own work. Self-check: drafts linted against voice rules + banned phrases before hand-up | Haines `copywriting` + `copy-editing`; owner's Burmese voice skills; social-media-skills | Meta Model API (Wonder), brand voice store |
 | Graphic Designer | `designer.py` (stage being added, M21) | Owns visual production per post (posters, carousels, thumbnails) from brand templates. Stops: never freestyles off-template, writes no copy, redefines no brand assets. Self-check: template compliance (logo, colors, fonts) verified before hand-up | gtm-fleet `brand-designer` pattern; local poster-studio skill | Brand-assets layer (templates, logo, fonts), Meta Model API (Muse Image) inside templates |
-| Brand Checker | `checker.py` + verdict step | The verify role: owns pass/fail per rule (banned phrases, no price/date promises, logo present) with quoted evidence + the model verdict. Stops: never edits, never approves; the rules live in the brand data. Self-check: a verdict without quoted evidence is invalid | gtm-fleet `brand-review`; Expert Panel pattern | Checker code, judge model verdict (Muse Spark Open via Baseten) |
+| Brand Checker | `checker.py` + verdict step | The verify role: owns pass/fail per rule (banned phrases, no price/date promises, logo present) with quoted evidence + the model verdict. Stops: never edits, never approves; the rules live in the brand data. Self-check: a verdict without quoted evidence is invalid | gtm-fleet `brand-review`; Expert Panel pattern | Checker code, judge model verdict (Muse Wonder, dedicated judge pass) |
 
 **Brand-assets layer.** Department 1 owns the single brand source
 every role consumes: colors, logo files, fonts, templates, voice
@@ -90,7 +90,7 @@ flowchart LR
     E -- fail --> F[One automatic revision]
     F --> E
     E -- still failing --> G[Flagged for the human]
-    E -- pass --> H[Judge verdict<br/>Muse Spark Open via Baseten]
+    E -- pass --> H[Judge verdict<br/>Muse Wonder judge pass]
     H --> I[Human approval<br/>dashboard buttons]
     I -- approve --> J[Scheduler gate<br/>refuses unapproved items]
     J --> K[Buffer queue]
@@ -120,8 +120,8 @@ flowchart LR
 
 | Route | Models | Used for |
 |---|---|---|
-| Meta Model API (`api.meta.ai`) | Muse Wonder 1.0 (main), Muse Spark 1.3 (utility) | Plan, drafts, report narrative. `PAGEOPS_MAIN_MODEL` switches the main model for cheap dev iterations. |
-| Baseten (`inference.baseten.co`) | Muse Spark Open (`meta-models/muse-spark-open-1026`, open weight) | The judge: brand verdicts at LOW reasoning effort, so a second model judges the main model's drafts (the verdict drives the deterministic pass / revise / flag routing in code). The same route also runs the pipeline on open weights for the open-weight comparison evidence. Enabled by `BASETEN_API_KEY`; without a key, verdicts fall back to the main client. |
+| Meta Model API (`api.meta.ai`) | Muse Wonder 1.0 (main), Muse Spark 1.3 (utility) | Plan, drafts, report narrative, and brand verdicts: the judge is Muse Wonder in a dedicated pass (its own client instance and verdict prompt); the verdict drives the deterministic pass / revise / flag routing in code, and the deterministic checker in code is the independent, model-free layer under it. `PAGEOPS_MAIN_MODEL` switches the main model for cheap dev iterations. |
+| Baseten (`inference.baseten.co`) | Muse Spark Open (`meta-models/muse-spark-open-1026`, open weight) | Optional alternate route: kept in the code, but not the configured judge. On this route, verdict-style calls run at LOW reasoning effort, and the route also runs the pipeline on open weights for the open-weight comparison evidence. Enabled by `BASETEN_API_KEY`. |
 | Mock | Canned outputs | Tests and offline development. The default mode; zero cost. |
 
 ## Trust and safety design
