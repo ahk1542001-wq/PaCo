@@ -90,6 +90,24 @@ cp .env.example .env   # MODEL_API_KEY for meta mode; BUFFER_API_KEY later
 Launchers set `PYTHONPATH=src` and unset `NO_PROXY`/`no_proxy` (on
 some VMs those values crash httpx URL parsing).
 
+### Weekly heartbeat
+
+```bash
+./run_cycle.sh
+```
+
+The heartbeat prepares one weekly cycle by itself so a scheduled
+job can keep the board ready. It reads a standing brief from
+`standing-brief.txt` inside the data directory (or from
+`PAGEOPS_BRIEF_FILE` or `--brief-file`); a missing or empty brief
+file exits nonzero and runs nothing. If any item is already
+`awaiting_approval`, it starts no new cycle and reports that the
+gate is still waiting, so unreviewed weeks never pile up. After a
+prepared cycle it writes a summary to `notes/last_cycle.txt` in
+the data directory and prints the same summary. Approvals remain
+manual on the dashboard: the heartbeat never approves, rejects or
+schedules anything.
+
 ## Mock mode and the smoke test
 
 With `MODEL_MODE=mock` (the default) the model client returns canned
