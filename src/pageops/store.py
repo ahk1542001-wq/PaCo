@@ -255,6 +255,11 @@ class Store:
         for key in ("banned_phrases", "cta_markers"):
             if raw.get(key, "").strip():
                 voice[key] = [p.strip() for p in raw[key].split(";") if p.strip()]
+        # The checker's opt-in depth floor travels as its own key:
+        # present only when the brand data sets it, so brands that
+        # never opted in are never depth-checked.
+        if raw.get("min_caption_chars", "").strip():
+            voice["min_caption_chars"] = raw["min_caption_chars"].strip()
         return voice
 
     def add_plan_row(self, row: dict[str, str]) -> dict[str, str]:
