@@ -402,6 +402,36 @@ class MetaModelClient:
         result = self.chat(messages, model=self.main_model)
         return result["choices"][0]["message"]["content"].strip()
 
+    def audience_read(self, analysis_text: str, brand_voice: dict) -> str:
+        """Interpret the deterministic audience analysis.
+
+        Growth direction, the efficiency story, and the first
+        corrective move, in two or three plain sentences. Figures
+        only from the analysis; the caller figure-checks.
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are PaCo's audience analyst. Interpret the "
+                    "audience analysis you are given in two or three "
+                    "plain sentences: whether the audience is growing "
+                    "or shrinking, what the efficiency ratios say, and "
+                    "the first corrective move. Use only numbers that "
+                    "appear in the analysis. Never invent a figure."
+                    + ("\n\n" + load_skills("analyst") if load_skills("analyst") else "")
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {"analysis": analysis_text, "brand": brand_voice.get("brand_name", "")}
+                ),
+            },
+        ]
+        result = self.chat(messages, model=self.main_model)
+        return result["choices"][0]["message"]["content"].strip()
+
     def content_read(self, analysis_text: str, brand_voice: dict) -> str:
         """Interpret the deterministic content analysis.
 
@@ -745,6 +775,13 @@ class MockClient:
             f"engagement; the strongest post was {best.get('post_id', 'n/a')} "
             f"with {best.get('engagement', 0)} engagement, so its angle leads "
             "the next plan."
+        )
+
+    def audience_read(self, analysis_text: str, brand_voice: dict) -> str:
+        return (
+            "the snapshots above are the analysis: judge the page "
+            "by the direction of the flows and the two efficiency "
+            "ratios, and say plainly when cadence is the problem."
         )
 
     def content_read(self, analysis_text: str, brand_voice: dict) -> str:

@@ -21,6 +21,10 @@ DATASETS: dict[str, list[str]] = {
         "draft", "check_status", "visual", "reject_reason", "post_id", "buffer_id", "character",
         "video", "visual_style",
     ],
+    "insights": [
+        "period_end", "followers", "views", "unique_viewers", "engagements",
+        "profile_visits", "new_followers", "unfollowers",
+    ],
     "metrics": ["date", "platform", "post_id", "reach", "engagement", "clicks", "notes"],
 }
 
