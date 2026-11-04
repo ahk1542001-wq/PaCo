@@ -35,6 +35,8 @@ PLATFORM_LIMITS: dict[str, int] = {
     "instagram": 2200,
     "tiktok": 2200,
     "linkedin": 3000,
+    "threads": 500,
+    "x": 280,
 }
 
 # Fallback defaults, used only when the brand data has no list.

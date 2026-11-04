@@ -3,6 +3,9 @@
 ## Owns
 
 - Captions and hashtags in the brand's voice, from the plan.
+- Cross-platform variants of each approved master, rewritten
+  natively per platform and checked like any draft; platforms
+  the owner toggled off get none.
 - The one revision when the Brand Checker fails a draft.
 - A humanising edit pass, driven by the brand's own voice data
   from the brand-assets layer, never by a personal voice profile.
@@ -24,7 +27,8 @@ every drafting, revision and humanising prompt: `content-writing`
 (the depth standard: who the brand is, who it is for, the pain,
 how it works in steps, what the call to action gives),
 `copywriting` (reason to act, honest proof only) and
-`copy-editing` (complete sentences, no chopped fragments).
+`copy-editing` (complete sentences, no chopped fragments) and
+`platform-variants` (per-platform shapes and invariants).
 Fitted from Haines `copywriting` and `copy-editing`.
 `humanizer` (blader/humanizer) is the named skill behind the
 humanising edit pass, which runs on the client brand's own
