@@ -267,6 +267,18 @@ def render_board(store: Store) -> str:
             '<button type="submit">Run report</button></form></section>'
         )
 
+    from .pipeline import last_visibility
+
+    visibility_panel = ""
+    saved_visibility = last_visibility(store)
+    if saved_visibility:
+        visibility_panel = (
+            '<section class="panel"><h2>Visibility audit (SEO / GEO / AEO)</h2>'
+            f"<pre>{html.escape(saved_visibility)}</pre>"
+            '<form method="post" action="/visibility">'
+            '<button type="submit">Run visibility audit</button></form></section>'
+        )
+
     brief_form = (
         '<section class="panel"><h2>New brief</h2>'
         '<form method="post" action="/brief" class="brief">'
@@ -286,7 +298,7 @@ def render_board(store: Store) -> str:
         "<p>PaCo Agent, a digital marketing and content creation agent: brief, plan, checks, approvals, scheduling, report.</p></header>"
         f"{brief_form}"
         f"<div class='board'>{''.join(columns_html)}</div>"
-        f"{brand_panel}{metrics_panel}{report_panel}"
+        f"{brand_panel}{metrics_panel}{report_panel}{visibility_panel}"
         "</body></html>"
     )
 
@@ -355,6 +367,11 @@ def make_handler(store: Store):
                     from .pipeline import report_week
 
                     report_week(store, client=get_client())
+                elif self.path == "/visibility":
+                    from .model_client import get_client
+                    from .pipeline import run_visibility_audit
+
+                    run_visibility_audit(store, client=get_client())
                 elif self.path == "/brand":
                     from .pipeline import update_brand_voice
 

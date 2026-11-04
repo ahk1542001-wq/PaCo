@@ -522,6 +522,36 @@ def report_week(store: Store, goal: str = "", client=None) -> dict:
     return report
 
 
+def run_visibility_audit(store: Store, client=None) -> dict:
+    """The Analyst's visibility stage act (SEO/GEO/AEO).
+
+    Builds the deterministic audit over the drafted content,
+    records it for the dashboard, and files a one-line summary in
+    the visibility history the Strategist reads when planning
+    (via context.latest_analyst_summary).
+    """
+    from .context import append_visibility_history, save_last_visibility
+    from .visibility import build_visibility_audit
+
+    audit = build_visibility_audit(store, client=client)
+    save_last_visibility(store, audit["text"])
+    findings = audit["findings"]
+    warns = [f["check"] for f in findings if f["status"] == "warn"]
+    summary = (
+        f"{len(findings) - len(warns)}/{len(findings)} checks pass"
+        + (f"; warned: {', '.join(warns)}" if warns else "; no warnings")
+    )
+    append_visibility_history(store, summary)
+    return audit
+
+
+def last_visibility(store: Store) -> str:
+    """The latest recorded visibility audit ("" until one runs)."""
+    from .context import load_last_visibility
+
+    return load_last_visibility(store)
+
+
 def last_report(store: Store) -> str:
     """The latest recorded report narrative ("" until one runs)."""
     from .context import load_last_report
