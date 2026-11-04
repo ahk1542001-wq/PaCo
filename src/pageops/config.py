@@ -19,6 +19,7 @@ DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 class Settings:
     model_mode: str = "mock"  # "mock" or "meta"
     model_api_key: str | None = None
+    buffer_api_key: str | None = None
     data_dir: Path = DEFAULT_DATA_DIR
     usage_log: Path = DEFAULT_DATA_DIR / "usage_log.jsonl"
 
@@ -28,6 +29,7 @@ class Settings:
         return cls(
             model_mode=os.environ.get("MODEL_MODE", "mock").strip().lower() or "mock",
             model_api_key=os.environ.get("MODEL_API_KEY") or None,
+            buffer_api_key=os.environ.get("BUFFER_API_KEY") or None,
             data_dir=data_dir,
             usage_log=data_dir / "usage_log.jsonl",
         )
