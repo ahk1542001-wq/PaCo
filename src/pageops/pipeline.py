@@ -36,7 +36,7 @@ code. A draft that fails the checker is revised once, then flagged.
 
 from __future__ import annotations
 
-from .checker import PLATFORM_LIMITS, check_draft
+from .checker import PLATFORM_LIMITS, check_draft, trim_to_cap
 from .designer import produce_visual
 from .model_client import humanize_text, shorten_text
 from .store import Store
@@ -254,6 +254,16 @@ def draft_and_check(
                     break
                 current = shortened
                 passes += 1
+            trimmed = False
+            if not repair_error and len(current) > cap:
+                # The model's passes did not converge (Wonder
+                # under-counts Burmese codepoints and trims only a
+                # few percent per pass): finish the job in code by
+                # dropping whole middle sentences, then let the
+                # checks judge the result like any other draft.
+                cut = trim_to_cap(current, cap, brand.get("cta_markers") or [])
+                if len(cut) < len(current):
+                    current, trimmed = cut, True
             if repair_error:
                 repair_note = (
                     f"\n[LENGTH REPAIR] shortening pass unavailable "
@@ -263,11 +273,12 @@ def draft_and_check(
                 current, repair_herr = humanize_text(client, current, brand)
                 humanize_error = humanize_error or repair_herr
                 if len(current) > cap:
-                    # The humaniser re-expanded it: one last cut,
-                    # adopted only if it lands under the cap.
-                    shortened, repair_error = shorten_text(client, current, cap, brand)
-                    if not repair_error and len(shortened) <= cap:
-                        current = shortened
+                    # The humaniser re-expanded it: one last
+                    # deterministic trim, adopted only if it lands
+                    # under the cap.
+                    cut = trim_to_cap(current, cap, brand.get("cta_markers") or [])
+                    if len(cut) <= cap:
+                        current, trimmed = cut, True
                 repair_result = check_draft(
                     current, item.get("platform", ""), brand
                 )
@@ -275,8 +286,9 @@ def draft_and_check(
                     text, result = current, repair_result
                     repair_note = (
                         f"\n[LENGTH REPAIR] draft shortened {before} -> "
-                        f"{len(text)} chars in {passes} pass(es) to meet "
-                        f"the {cap} character platform cap"
+                        f"{len(text)} chars in {passes} pass(es)"
+                        + (" + sentence trim" if trimmed else "")
+                        + f" to meet the {cap} character platform cap"
                     )
                 else:
                     repair_note = (
