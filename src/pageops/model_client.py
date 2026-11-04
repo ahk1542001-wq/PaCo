@@ -402,6 +402,37 @@ class MetaModelClient:
         result = self.chat(messages, model=self.main_model)
         return result["choices"][0]["message"]["content"].strip()
 
+    def visibility_read(self, findings_text: str, brand_voice: dict) -> str:
+        """Interpret the deterministic visibility audit findings.
+
+        SEO/GEO/AEO in two or three plain sentences: the strongest
+        point, the biggest gap, the first fix. Figures only from
+        the findings; the caller figure-checks the prose against
+        them and drops it on any invented number.
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are PaCo's visibility analyst for search and AI "
+                    "answer engines (SEO, GEO, AEO). Interpret the audit "
+                    "findings you are given in two or three plain "
+                    "sentences: the strongest point, the biggest gap and "
+                    "the first fix. Use only numbers that appear in the "
+                    "findings. Never invent a figure."
+                    + ("\n\n" + load_skills("analyst") if load_skills("analyst") else "")
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {"findings": findings_text, "brand": brand_voice.get("brand_name", "")}
+                ),
+            },
+        ]
+        result = self.chat(messages, model=self.main_model)
+        return result["choices"][0]["message"]["content"].strip()
+
     def humanize(self, text: str, brand_voice: dict) -> str:
         """The humanising pass every writer output goes through.
 
@@ -684,6 +715,13 @@ class MockClient:
             f"engagement; the strongest post was {best.get('post_id', 'n/a')} "
             f"with {best.get('engagement', 0)} engagement, so its angle leads "
             "the next plan."
+        )
+
+    def visibility_read(self, findings_text: str, brand_voice: dict) -> str:
+        return (
+            "the deterministic checks above are the audit: act on the "
+            "warned items first, in the order listed; each warning "
+            "carries its own fix."
         )
 
     def verdict(self, draft: dict, check_summary: str) -> dict:
