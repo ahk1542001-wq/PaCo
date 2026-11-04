@@ -32,7 +32,11 @@ BRAND_VOICE_SEED: dict[str, str] = {
         "Page/WhatsApp chatbot from $150; CRM & Lead Follow-Up Pack from $200; "
         "E-Commerce Pack from $200; Content Pipeline from $150; Monthly Care"
     ),
-    "audience": "Myanmar and Thai SME owners who sell through social media pages",
+    "audience": (
+        "Myanmar SME owners who sell through social media pages and "
+        "run the page themselves (decided 2026-11-04: Myanmar SME "
+        "owners broadly, in Myanmar and based in Thailand)"
+    ),
     "tone": "Professional and friendly, plain language, no hype",
     "rules": (
         "Every post needs a clear CTA; "
