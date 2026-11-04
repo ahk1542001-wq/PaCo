@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import DEFAULT_DATA_DIR
+from .skills import load_skills, with_skills
 
 def humanize_text(client, text: str, brand_voice: dict) -> tuple[str, str]:
     """Run a client's humanising pass, with visible degradation.
@@ -93,9 +94,15 @@ class MetaModelClient:
         # to muse-spark-1.3 for cheap development iterations.
         self.main_model = os.environ.get("PAGEOPS_MAIN_MODEL") or MODEL_WONDER
         self.verdict_model = MODEL_WONDER
-        # Set by the Baseten factory: verdict-style calls measure best
-        # at LOW reasoning effort. None means the parameter is not sent.
-        self.reasoning_effort: str | None = None
+        # Verdict-style calls measure best at LOW reasoning effort,
+        # and the 2026-11-04 caption runs proved the hard way that
+        # an unset effort can spend the whole token budget on
+        # hidden reasoning and return empty content. Default LOW;
+        # the Baseten factory sets the same value explicitly, and
+        # PAGEOPS_REASONING_EFFORT overrides it.
+        self.reasoning_effort: str | None = (
+            os.environ.get("PAGEOPS_REASONING_EFFORT") or "low"
+        )
 
     def chat(self, messages: list[dict], model: str = MODEL_WONDER, **kwargs) -> dict:
         if not self.api_key:
@@ -142,10 +149,10 @@ class MetaModelClient:
         if trends:
             payload["trends"] = trends
         return self._structured(
-            "Create a 7-day content plan as JSON: {posts: [{day, platform, topic, angle, format, character, visual_style}]}. "
+            with_skills("Create a 7-day content plan as JSON: {posts: [{day, platform, topic, angle, format, character, visual_style}]}. "
             "Set character to \"yes\" only for announcement or engagement posts where a mascot presenter fits; otherwise leave it empty. "
             "Set visual_style to \"scene\" for announcements, education and brand posts, and to \"concept\" when the post "
-            "carries a single sharp benefit or pain message; leave it empty for text-only posts.",
+            "carries a single sharp benefit or pain message; leave it empty for text-only posts.", "strategist"),
             payload,
             self.main_model,
         )
@@ -207,6 +214,7 @@ class MetaModelClient:
                 "headline. The prompt must forbid text and logos: include the words "
                 f"\"no text\" and \"no logos\" in the prompt.{character}"
             )
+        instruction = with_skills(instruction, "designer")
         messages = [
             {
                 "role": "system",
@@ -298,14 +306,14 @@ class MetaModelClient:
                 "customers or testimonials), and a final call-to-action line."
             )
         return self._structured(
-            instruction,
+            with_skills(instruction, "copywriter"),
             {"plan_item": plan_item, "brand_voice": brand_voice},
             self.main_model,
         )
 
     def verdict(self, draft: dict, check_summary: str) -> dict:
         return self._structured(
-            "Give a final verdict as JSON: {verdict: pass|revise, reasons: []} using the rule-check summary.",
+            with_skills("Give a final verdict as JSON: {verdict: pass|revise, reasons: []} using the rule-check summary.", "brand-checker"),
             {"draft": draft, "check_summary": check_summary},
             self.verdict_model,
         )
@@ -319,6 +327,7 @@ class MetaModelClient:
                     "You are PageOps Agent's performance analyst. Write two or "
                     "three plain sentences interpreting the numbers you are "
                     "given. Never invent a figure that is not in the input."
+                    + ("\n\n" + load_skills("analyst") if load_skills("analyst") else "")
                 ),
             },
             {
@@ -352,6 +361,7 @@ class MetaModelClient:
                     "line breaks and the same number of lines. Never add "
                     "claims, results, customers or testimonials that are not "
                     "in the text. Return only the rewritten text."
+                    + ("\n\n" + load_skills("copywriter") if load_skills("copywriter") else "")
                 ),
             },
             {
