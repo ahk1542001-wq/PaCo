@@ -147,12 +147,23 @@ def generate_week(
     orchestrator) and the long-term loop - the Analyst's latest
     history summary as context - both reach the planner, so this
     plan is built on what is happening and what worked before.
+    Retrieval memory rides alongside the summary: the pieces of
+    this brand's own stored past work most relevant to this brief
+    (past drafts, reports, analyses) join the planner's context.
     """
     from .context import latest_analyst_summary
+    from .memory import retrieval_context
 
     brand = store.get_brand_voice()
+    context_parts = [
+        latest_analyst_summary(store),
+        retrieval_context(store, brief_text),
+    ]
     plan = client.generate_plan(
-        brief_text, brand, context=latest_analyst_summary(store), trends=trends
+        brief_text,
+        brand,
+        context="\n\n".join(part for part in context_parts if part),
+        trends=trends,
     )
     rows = []
     for post in plan.get("posts", []):
