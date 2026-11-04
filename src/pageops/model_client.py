@@ -291,6 +291,24 @@ class MetaModelClient:
             "Write one post caption as JSON: {platform, text, hashtags: []}. "
             "Follow the brand rules."
         )
+        # The length window, stated up front: the brand's depth
+        # floor (when it sets one) and the platform's cap. The
+        # 2026-11-04 skills run drafted deep captions that then
+        # failed the cap after their one revision; a drafter who
+        # knows the window writes inside it the first time.
+        from .checker import PLATFORM_LIMITS
+
+        cap = PLATFORM_LIMITS.get(str(plan_item.get("platform") or "").lower())
+        floor = (brand_voice or {}).get("min_caption_chars")
+        window = []
+        if floor:
+            window.append(f"at least {floor} characters")
+        if cap:
+            window.append(f"at most {cap} characters")
+        if window:
+            instruction += (
+                " The caption text must be " + " and ".join(window) + " long."
+            )
         if "video" in (plan_item.get("format") or "").lower():
             # Wonder directs the video: the draft text IS the
             # storyboard script, one caption line per beat in the

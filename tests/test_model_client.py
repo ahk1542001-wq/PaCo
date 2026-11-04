@@ -107,3 +107,28 @@ def test_baseten_chat_posts_to_baseten_url(monkeypatch):
     assert captured["url"] == "https://inference.baseten.co/v1/chat/completions"
     assert captured["json"]["model"] == MODEL_SPARK_OPEN
     assert draft["text"] == "Hi #FYFAI"
+
+
+def test_draft_instruction_states_the_length_window(monkeypatch):
+    # The drafter must know the window before writing: the brand's
+    # depth floor and the platform cap (2026-11-04 skills run).
+    from pageops.model_client import MetaModelClient
+
+    client = MetaModelClient(api_key="test-key")
+    captured = {}
+
+    def fake_structured(instruction, payload, model):
+        captured["instruction"] = instruction
+        return {"platform": "facebook", "text": "x", "hashtags": []}
+
+    monkeypatch.setattr(client, "_structured", fake_structured)
+    client.generate_draft(
+        {"platform": "Facebook", "format": "poster"},
+        {"brand_name": "FYF AI", "min_caption_chars": "500"},
+    )
+    assert "at least 500 characters" in captured["instruction"]
+    assert "at most 2000 characters" in captured["instruction"]
+
+    client.generate_draft({"platform": "Facebook", "format": "poster"}, {})
+    assert "at least" not in captured["instruction"]
+    assert "at most 2000 characters" in captured["instruction"]
