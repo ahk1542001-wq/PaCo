@@ -9,6 +9,14 @@ and reports that the gate is waiting.
 Usage:
     PYTHONPATH=src .venv/bin/python scripts/run_cycle.py
     PYTHONPATH=src .venv/bin/python scripts/run_cycle.py --brief-file PATH
+    PYTHONPATH=src .venv/bin/python scripts/run_cycle.py --if-due
+
+With --if-due the cycle runs only when the configured heartbeat
+schedule (brand data: heartbeat_weekday, heartbeat_time,
+heartbeat_timezone) says a run is owed; a cron line fires it hourly
+(see deploy/paco-heartbeat.cron). Every completed cycle records its
+run and, when work waits at the gate, leaves the owner one
+notification in the store (see pageops.heartbeat).
 
 The standing brief defaults to standing-brief.txt inside the data
 directory selected by PAGEOPS_DATA_DIR. PAGEOPS_BRIEF_FILE or the
@@ -32,6 +40,11 @@ from pageops.model_client import (  # noqa: E402
     get_client,
     get_image_client,
     get_judge_client,
+)
+from pageops.heartbeat import (  # noqa: E402
+    heartbeat_due,
+    notify_gate_status,
+    record_run,
 )
 from pageops.pipeline import process_week  # noqa: E402
 from pageops.research import fetch_research  # noqa: E402
@@ -89,6 +102,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Standing brief file (default: PAGEOPS_BRIEF_FILE or "
         "standing-brief.txt in the data directory)",
     )
+    parser.add_argument(
+        "--if-due",
+        action="store_true",
+        help="Run only when the configured heartbeat schedule is due",
+    )
     args = parser.parse_args(argv)
 
     settings = get_settings()
@@ -103,8 +121,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     store = Store(settings.data_dir)
+    if args.if_due and not heartbeat_due(store):
+        print("Heartbeat not due; no cycle was run.")
+        return 0
     rows = store.read_dataset("plan")
     if any(row.get("status") == "awaiting_approval" for row in rows):
+        notify_gate_status(store)
         print(_summary(brief_text, rows, gate_waiting=True))
         return 0
 
@@ -123,6 +145,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     summary = _summary(brief_text, store.read_dataset("plan"))
     _write_summary(store, summary)
+    record_run(store)
+    notify_gate_status(store)
     print(summary)
     return 0
 

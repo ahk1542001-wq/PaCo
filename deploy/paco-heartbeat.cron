@@ -1,0 +1,7 @@
+# PaCo weekly heartbeat - install with: crontab -e (paste the line,
+# fixing the path). The tick fires hourly; the product itself decides
+# whether a run is due (brand data: heartbeat_weekday, heartbeat_time,
+# heartbeat_timezone), prepares one cycle if so, records the run, and
+# leaves the owner a notification when work waits at the approval
+# gate. The gate stays manual: the heartbeat never approves.
+0 * * * * cd /home/hatch/workspace/pageops-agent && .venv/bin/python scripts/run_heartbeat_live.py data-final-dept1 >> heartbeat.log 2>&1
