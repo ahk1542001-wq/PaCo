@@ -10,8 +10,13 @@ who has never heard of the brand must finish the caption knowing:
    an abstract claim.
 4. How the thing works, in concrete steps the reader can picture.
 5. What the reader gets from the call to action, concretely
-   (what the free mini-audit shows them, step by step, and that
-   it carries no obligation).
+   (what the free mini-audit shows them, step by step).
+
+Prices and costs are never discussed in content, and a caption
+never carries a no-pressure disclaimer ("no obligation", "we
+won't push you"): both read as sales talk and cheapen the post.
+Pricing belongs to the conversation that follows the call to
+action, never to the post itself.
 
 Add an experience layer wherever the brand data supports one:
 what the team built, tried, or learned. Facts alone never ship.
