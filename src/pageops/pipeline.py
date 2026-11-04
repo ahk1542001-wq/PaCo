@@ -545,6 +545,38 @@ def run_visibility_audit(store: Store, client=None) -> dict:
     return audit
 
 
+def run_content_analysis(store: Store, client=None) -> dict:
+    """The Analyst's content stage act: build the topic/format
+    breakdown, record it, and file the one-line summary the
+    Strategist reads when planning."""
+    from .content_analysis import build_content_analysis
+    from .context import append_content_history, save_last_content_analysis
+
+    result = build_content_analysis(store, client=client)
+    save_last_content_analysis(store, result["text"])
+    topics = result["analysis"]["by_topic"]
+    if topics:
+        best = topics[0]
+        summary = (
+            f"strongest topic {best['name']} at {best['rate']}% engagement "
+            f"rate across {best['posts']} post(s)"
+        )
+        if len(topics) > 1:
+            worst = topics[-1]
+            summary += f"; weakest {worst['name']} at {worst['rate']}%"
+    else:
+        summary = "no measured posts yet"
+    append_content_history(store, summary)
+    return result
+
+
+def last_content_analysis(store: Store) -> str:
+    """The latest recorded content analysis ("" until one runs)."""
+    from .context import load_last_content_analysis
+
+    return load_last_content_analysis(store)
+
+
 def last_visibility(store: Store) -> str:
     """The latest recorded visibility audit ("" until one runs)."""
     from .context import load_last_visibility

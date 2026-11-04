@@ -279,6 +279,18 @@ def render_board(store: Store) -> str:
             '<button type="submit">Run visibility audit</button></form></section>'
         )
 
+    from .pipeline import last_content_analysis
+
+    content_panel = ""
+    saved_content = last_content_analysis(store)
+    if saved_content:
+        content_panel = (
+            '<section class="panel"><h2>Content analysis</h2>'
+            f"<pre>{html.escape(saved_content)}</pre>"
+            '<form method="post" action="/content">'
+            '<button type="submit">Run content analysis</button></form></section>'
+        )
+
     brief_form = (
         '<section class="panel"><h2>New brief</h2>'
         '<form method="post" action="/brief" class="brief">'
@@ -298,7 +310,7 @@ def render_board(store: Store) -> str:
         "<p>PaCo Agent, a digital marketing and content creation agent: brief, plan, checks, approvals, scheduling, report.</p></header>"
         f"{brief_form}"
         f"<div class='board'>{''.join(columns_html)}</div>"
-        f"{brand_panel}{metrics_panel}{report_panel}{visibility_panel}"
+        f"{brand_panel}{metrics_panel}{report_panel}{visibility_panel}{content_panel}"
         "</body></html>"
     )
 
@@ -367,6 +379,11 @@ def make_handler(store: Store):
                     from .pipeline import report_week
 
                     report_week(store, client=get_client())
+                elif self.path == "/content":
+                    from .model_client import get_client
+                    from .pipeline import run_content_analysis
+
+                    run_content_analysis(store, client=get_client())
                 elif self.path == "/visibility":
                     from .model_client import get_client
                     from .pipeline import run_visibility_audit

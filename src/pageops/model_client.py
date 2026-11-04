@@ -402,6 +402,36 @@ class MetaModelClient:
         result = self.chat(messages, model=self.main_model)
         return result["choices"][0]["message"]["content"].strip()
 
+    def content_read(self, analysis_text: str, brand_voice: dict) -> str:
+        """Interpret the deterministic content analysis.
+
+        Which topic and format lead, which to rest, in two or
+        three plain sentences. Figures only from the analysis;
+        the caller figure-checks and drops invention.
+        """
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are PaCo's content analyst. Interpret the "
+                    "content analysis you are given in two or three "
+                    "plain sentences: the topic and format to lead "
+                    "with, what to rest, what to test again. Use only "
+                    "numbers that appear in the analysis. Never "
+                    "invent a figure."
+                    + ("\n\n" + load_skills("analyst") if load_skills("analyst") else "")
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {"analysis": analysis_text, "brand": brand_voice.get("brand_name", "")}
+                ),
+            },
+        ]
+        result = self.chat(messages, model=self.main_model)
+        return result["choices"][0]["message"]["content"].strip()
+
     def visibility_read(self, findings_text: str, brand_voice: dict) -> str:
         """Interpret the deterministic visibility audit findings.
 
@@ -715,6 +745,13 @@ class MockClient:
             f"engagement; the strongest post was {best.get('post_id', 'n/a')} "
             f"with {best.get('engagement', 0)} engagement, so its angle leads "
             "the next plan."
+        )
+
+    def content_read(self, analysis_text: str, brand_voice: dict) -> str:
+        return (
+            "the computed groups above are the analysis: lead the "
+            "next plan with the strongest topic and format, and "
+            "rest the weakest until it is retested."
         )
 
     def visibility_read(self, findings_text: str, brand_voice: dict) -> str:

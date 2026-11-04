@@ -64,12 +64,24 @@ def append_analyst_history(store, stats: dict) -> None:
 def latest_analyst_summary(store) -> str:
     path = _notes_dir(store) / "analyst_history.jsonl"
     if not path.exists():
+        parts = []
         visibility = latest_visibility_summary(store)
-        return f"Visibility audit: {visibility}" if visibility else ""
+        if visibility:
+            parts.append(f"Visibility audit: {visibility}")
+        content = latest_content_summary(store)
+        if content:
+            parts.append(f"Content analysis: {content}")
+        return " ".join(parts)
     lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
     if not lines:
+        parts = []
         visibility = latest_visibility_summary(store)
-        return f"Visibility audit: {visibility}" if visibility else ""
+        if visibility:
+            parts.append(f"Visibility audit: {visibility}")
+        content = latest_content_summary(store)
+        if content:
+            parts.append(f"Content analysis: {content}")
+        return " ".join(parts)
     last = json.loads(lines[-1])
     summary = (
         f"Last period: reach {last['reach']}, engagement {last['engagement']}, "
@@ -78,6 +90,9 @@ def latest_analyst_summary(store) -> str:
     visibility = latest_visibility_summary(store)
     if visibility:
         summary += f" Visibility audit: {visibility}"
+    content = latest_content_summary(store)
+    if content:
+        summary += f" Content analysis: {content}"
     return summary
 
 
@@ -113,6 +128,39 @@ def append_visibility_history(store, summary: str) -> None:
 
 def latest_visibility_summary(store) -> str:
     path = _notes_dir(store) / "visibility_history.jsonl"
+    if not path.exists():
+        return ""
+    lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    if not lines:
+        return ""
+    return json.loads(lines[-1]).get("summary", "")
+
+
+def save_last_content_analysis(store, text: str) -> None:
+    """Persist the latest content analysis (Analyst layer)."""
+    path = store.data_dir / "notes" / "last_content_analysis.txt"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def load_last_content_analysis(store) -> str:
+    """The latest recorded content analysis, or "" if none ran yet."""
+    path = store.data_dir / "notes" / "last_content_analysis.txt"
+    if not path.exists():
+        return ""
+    return path.read_text(encoding="utf-8")
+
+
+def append_content_history(store, summary: str) -> None:
+    entry = {"date": _now()[:10], "summary": summary}
+    with (_notes_dir(store) / "content_history.jsonl").open(
+        "a", encoding="utf-8"
+    ) as fh:
+        fh.write(json.dumps(entry) + "\n")
+
+
+def latest_content_summary(store) -> str:
+    path = _notes_dir(store) / "content_history.jsonl"
     if not path.exists():
         return ""
     lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
