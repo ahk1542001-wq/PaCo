@@ -29,6 +29,7 @@ DATASETS: dict[str, list[str]] = {
     "brand_build": ["id", "level", "status", "content", "updated"],
     "variants": ["id", "plan_id", "platform", "text", "check_status"],
     "metrics": ["date", "platform", "post_id", "reach", "engagement", "clicks", "notes"],
+    "notifications": ["id", "created", "kind", "message", "read"],
 }
 
 # Seed brand voice for the demo brand, FYF AI: an AI-automation services

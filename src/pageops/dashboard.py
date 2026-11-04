@@ -375,6 +375,27 @@ def render_board(store: Store) -> str:
             '<button type="submit">Run research</button></form></section>'
         )
 
+    from .heartbeat import schedule_summary, unread_notifications
+
+    heartbeat_panel = (
+        '<section class="panel"><h2>Heartbeat &amp; notifications</h2>'
+        f"<p>{html.escape(schedule_summary(store))}</p>"
+    )
+    unread = unread_notifications(store)
+    if unread:
+        n_items = "".join(
+            "<li>" + html.escape(f"[{n['kind']}] {n['message']}") + "</li>"
+            for n in unread
+        )
+        heartbeat_panel += (
+            f"<ul>{n_items}</ul>"
+            '<form method="post" action="/notifications-read">'
+            '<button type="submit">Mark all read</button></form>'
+        )
+    else:
+        heartbeat_panel += "<p>No unread notifications.</p>"
+    heartbeat_panel += "</section>"
+
     brief_form = (
         '<section class="panel"><h2>New brief</h2>'
         '<form method="post" action="/brief" class="brief">'
@@ -394,7 +415,7 @@ def render_board(store: Store) -> str:
         "<p>PaCo Agent, a digital marketing and content creation agent: brief, plan, checks, approvals, scheduling, report.</p></header>"
         f"{brief_form}"
         f"<div class='board'>{''.join(columns_html)}</div>"
-        f"{brand_panel}{metrics_panel}{report_panel}{visibility_panel}{content_panel}{audience_panel}{variants_panel}{brand_builder_panel}{research_panel}"
+        f"{brand_panel}{metrics_panel}{report_panel}{visibility_panel}{content_panel}{audience_panel}{variants_panel}{brand_builder_panel}{research_panel}{heartbeat_panel}"
         "</body></html>"
     )
 
@@ -503,6 +524,10 @@ def make_handler(store: Store):
                     from .pipeline import run_visibility_audit
 
                     run_visibility_audit(store, client=get_client())
+                elif self.path == "/notifications-read":
+                    from .heartbeat import mark_notifications_read
+
+                    mark_notifications_read(store)
                 elif self.path == "/brand":
                     from .pipeline import update_brand_voice
 
