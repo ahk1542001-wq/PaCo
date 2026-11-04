@@ -102,3 +102,11 @@ def test_brand_voice_carries_the_depth_floor_from_the_store(tmp_path):
     result = check_draft("FYF AI. Audit.", "facebook", voice)
     rules = {r.rule: r.passed for r in result.results}
     assert rules["caption_depth"] is False
+
+
+def test_copywriter_skills_forbid_cost_talk_and_disclaimers():
+    # Owner's rule, 2026-11-04: public content never talks cost
+    # and never carries a no-pressure disclaimer.
+    text = load_skills("copywriter")
+    assert "never discussed in content" in text
+    assert "no-pressure disclaimer" in text
