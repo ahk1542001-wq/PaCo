@@ -22,8 +22,13 @@
 
 ## Skills
 
-gtm-fleet `content-researcher`; Haines `customer-research` and
-`content-strategy`; gtm-fleet `campaign-plan`; Haines `social`.
+Loaded at call time from `skills/strategist/` and appended to
+every planning prompt: `content-strategy` (pillars with one
+journey job each, the varied-week mix, one piece adapted across
+platforms) and `content-calendar` (the recurring skeleton, the
+reactive news slot, the no-repeat window). Fitted from Haines
+`content-strategy`, `customer-research` and `social`, and from
+the social-media-skills calendar set.
 
 ## Tools
 

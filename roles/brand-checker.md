@@ -25,8 +25,11 @@
 
 ## Skills
 
-None. The deterministic checker is code; the verdict is a model
-call with a fixed rubric.
+The deterministic checker is code, including the opt-in depth
+rules (a brand that sets `min_caption_chars` also requires its
+name to appear). The verdict call loads `skills/brand-checker/
+checking.md` at call time: the depth questions, the honesty
+gates and the visual checks, judged on quoted evidence.
 
 ## Tools
 

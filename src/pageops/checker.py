@@ -158,6 +158,47 @@ def check_draft(text: str, platform: str, brand_voice: dict) -> CheckResult:
             )
         )
 
+    # Rule 5: caption depth, only when the brand data opts in by
+    # setting min_caption_chars. A caption below the floor is an
+    # information stub: it cannot carry who the brand is, the
+    # pain, how it works and what the CTA gives. The floor lives
+    # in the brand data so short-form brands are never forced.
+    floor = 0
+    raw_floor = (brand_voice or {}).get("min_caption_chars")
+    if raw_floor is not None:
+        try:
+            floor = int(raw_floor)
+        except (TypeError, ValueError):
+            floor = 0
+    if floor > 0:
+        results.append(
+            RuleResult(
+                rule="caption_depth",
+                passed=len(text) >= floor,
+                evidence=(
+                    f"{len(text)} chars meets the {floor} char depth floor"
+                    if len(text) >= floor
+                    else f"{len(text)} chars is below the {floor} char depth floor; "
+                    f"draft starts {_quote(text, 60)}"
+                ),
+            )
+        )
+        # Rule 6 (under the same opt-in): the brand must be named,
+        # so a first-time reader knows whose post this is.
+        brand_name = str((brand_voice or {}).get("brand_name") or "").strip()
+        if brand_name:
+            results.append(
+                RuleResult(
+                    rule="brand_named",
+                    passed=brand_name.lower() in lowered,
+                    evidence=(
+                        f"brand named: {_quote(brand_name)}"
+                        if brand_name.lower() in lowered
+                        else f"brand name {_quote(brand_name)} never appears in the draft"
+                    ),
+                )
+            )
+
     return CheckResult(passed=all(r.passed for r in results), results=results)
 
 

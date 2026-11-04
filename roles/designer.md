@@ -64,9 +64,15 @@
 
 ## Skills
 
-The full international graphic-design stack: `logo-design`,
-`brand-identity`, `brand-style-guide`, `canvas-design`,
-`theme-factory`, `art-direction`, `creative-direction`,
+Loaded at call time from `skills/designer/` and appended to
+every art-direction prompt: `art-direction` (the build order:
+world, subject, contrast, depth, proof, type last; rich scenes,
+never flat vector) and `visual-treatment` (the house treatment
+learned from the owner's corrections: the text zone grown out
+of the photo, the subject never cropped away, tiered type,
+one-glance concept checks). The wider design library
+(`logo-design`, `brand-identity`, `brand-style-guide`,
+`canvas-design`, `theme-factory`, `creative-direction`,
 `design-system`, `design-md`, `poster-studio`,
 `ads-creative-development`, `frontend-design` (design method),
 plus `ui-ux-pro-max-skill` (design intelligence), `taste-skill`

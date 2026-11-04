@@ -19,9 +19,16 @@
 
 ## Skills
 
-Haines `copywriting` and `copy-editing`; `humanizer`
-(blader/humanizer) is the named skill behind the humanising
-edit pass, which runs on the client brand's own voice data.
+Loaded at call time from `skills/copywriter/` and appended to
+every drafting, revision and humanising prompt: `content-writing`
+(the depth standard: who the brand is, who it is for, the pain,
+how it works in steps, what the call to action gives),
+`copywriting` (reason to act, honest proof only) and
+`copy-editing` (complete sentences, no chopped fragments).
+Fitted from Haines `copywriting` and `copy-editing`.
+`humanizer` (blader/humanizer) is the named skill behind the
+humanising edit pass, which runs on the client brand's own
+voice data.
 
 ## Tools
 

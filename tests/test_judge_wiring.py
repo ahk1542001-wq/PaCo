@@ -80,9 +80,11 @@ def test_judge_client_is_a_dedicated_wonder_client(monkeypatch):
     assert isinstance(judge, MetaModelClient)
     assert judge.base_url == BASE_URL
     assert judge.verdict_model == MODEL_WONDER
-    # The Meta route is not forced into Baseten-specific settings:
-    # no reasoning_effort is sent on verdict calls.
-    assert judge.reasoning_effort is None
+    # Both routes send LOW reasoning effort: the Baseten factory
+    # sets it explicitly, and since 2026-11-04 the Meta client
+    # defaults to it too, after unset effort returned empty
+    # content in production caption runs.
+    assert judge.reasoning_effort == "low"
 
 
 def test_wonder_judge_verdict_flows_through_the_pipeline(tmp_path, monkeypatch):
