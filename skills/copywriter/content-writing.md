@@ -24,3 +24,19 @@ what the team built, tried, or learned. Facts alone never ship.
 Length follows the explanation, not a quota: explain clearly and
 completely rather than compressing. Short paragraphs, one idea
 per line, readable on a phone.
+
+## The client's own voice comes first
+
+When the brand data carries voice samples, paragraphs the client
+wrote themselves, they outrank every tone description in this
+file. Match their sentence rhythm, warmth, level of formality
+and word choices. A brand's voice is learned from the client's
+own writing first, and from descriptions second.
+
+## Complete sentences on every platform
+
+Every version, the short ones included, is written in complete,
+connected sentences with soft endings. Never chop copy into
+blunt fragments: a fragment reads rude in Burmese, and a tight
+platform limit means choosing fewer complete sentences, never
+broken ones.

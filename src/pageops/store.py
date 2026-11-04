@@ -265,6 +265,12 @@ class Store:
         # never opted in are never depth-checked.
         if raw.get("min_caption_chars", "").strip():
             voice["min_caption_chars"] = raw["min_caption_chars"].strip()
+        # The client's own written paragraphs, when they send them:
+        # the tone-of-voice authority for every writer (owner's
+        # requirement, 2026-11-04). Opt-in like the floor: brands
+        # that never send samples are never sample-matched.
+        if raw.get("voice_samples", "").strip():
+            voice["voice_samples"] = raw["voice_samples"].strip()
         return voice
 
     def add_plan_row(self, row: dict[str, str]) -> dict[str, str]:
