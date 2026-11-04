@@ -271,6 +271,19 @@ class Store:
         # that never send samples are never sample-matched.
         if raw.get("voice_samples", "").strip():
             voice["voice_samples"] = raw["voice_samples"].strip()
+        # Connected Buffer channels per platform (the ready-to-
+        # connect data, owner's direction 2026-11-04): the owner
+        # pastes each platform's Buffer profile id into the brand
+        # data, and live scheduling resolves the item's platform
+        # against this map. Opt-in like the rest: unconnected
+        # platforms are simply absent.
+        channels = {}
+        for platform in ("facebook", "instagram", "tiktok", "threads", "x"):
+            value = raw.get(f"buffer_channel_{platform}", "").strip()
+            if value:
+                channels[platform] = value
+        if channels:
+            voice["buffer_channels"] = channels
         return voice
 
     def add_plan_row(self, row: dict[str, str]) -> dict[str, str]:
