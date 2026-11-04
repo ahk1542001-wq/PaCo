@@ -49,7 +49,7 @@ BRAND_KEYS = (
     "required_hashtags", "banned_phrases", "cta_markers",
     "character_name", "character_image", "character_rules",
     "character_sheet", "brand_colors", "brand_fonts", "logo_usage",
-    "template_sizes", "proof_baseline",
+    "template_sizes", "proof_baseline", "min_caption_chars",
 )
 
 

@@ -81,3 +81,24 @@ def test_wonder_client_defaults_to_low_reasoning_effort():
 
     client = MetaModelClient(api_key="test-key")
     assert client.reasoning_effort == "low"
+
+
+def test_brand_voice_carries_the_depth_floor_from_the_store(tmp_path):
+    # The depth rules only protect a real run if the brand layer
+    # actually delivers min_caption_chars to the checker.
+    import csv
+
+    from pageops.pipeline import update_brand_voice
+    from pageops.store import Store
+
+    store = Store(tmp_path)
+    with open(tmp_path / "brand_voice.csv", "w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(["key", "value"])
+        writer.writerow(["brand_name", "FYF AI"])
+    update_brand_voice(store, "min_caption_chars", "500")
+    voice = store.get_brand_voice()
+    assert voice["min_caption_chars"] == "500"
+    result = check_draft("FYF AI. Audit.", "facebook", voice)
+    rules = {r.rule: r.passed for r in result.results}
+    assert rules["caption_depth"] is False
