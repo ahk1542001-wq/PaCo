@@ -47,11 +47,24 @@ def test_length_only_failure_is_repaired(tmp_path):
     assert "shortened" in updated["check_status"]
 
 
+UNBREAKABLE = ("word " * 500) + "message us #FYFAI #AIAutomation #SME"
+
+
+class UnbreakableClient(MockClient):
+    """One giant unit with no sentence boundary: neither the
+    model's pass (returns it unchanged) nor the sentence trim
+    can cut it, so the gate must keep holding it."""
+
+    def generate_draft(self, plan_item, brand_voice):
+        return {"platform": "facebook", "text": UNBREAKABLE, "hashtags": []}
+
+    def shorten(self, text, max_chars, brand_voice):
+        return text
+
+
 def test_repair_that_still_fails_stays_checked(tmp_path):
     store = Store(tmp_path)
-    client = LongClient(shortened=LONG)
-    updated = draft_and_check(store, client, _row(store))
-    assert client.shorten_calls == 1
+    updated = draft_and_check(store, UnbreakableClient(), _row(store))
     assert updated["status"] == "checked"
     assert "[LENGTH REPAIR]" in updated["check_status"]
 
@@ -112,3 +125,27 @@ def test_repair_repeats_until_under_the_cap(tmp_path):
     assert updated["status"] == "awaiting_approval"
     assert len(updated["draft"]) <= 2000
     assert "pass(es)" in updated["check_status"]
+
+
+def test_sentence_trim_rescues_a_non_converging_model(tmp_path):
+    """Wonder's live behaviour (2026-11-04): each shorten pass
+    trims only a few percent, so the model loop alone never
+    converges; the deterministic sentence trim finishes the job."""
+    store = Store(tmp_path)
+    client = LongClient(shortened=LONG)
+    updated = draft_and_check(store, client, _row(store))
+    assert updated["status"] == "awaiting_approval"
+    assert len(updated["draft"]) <= 2000
+    assert "sentence trim" in updated["check_status"]
+
+
+def test_trim_to_cap_keeps_hook_cta_and_hashtags():
+    from pageops.checker import trim_to_cap
+
+    text = ("Hook sentence stays. " + "A very long middle sentence that rambles on and on. " * 8
+            + "message us for the free audit #FYFAI #AIAutomation")
+    out = trim_to_cap(text, 200, ["message us"])
+    assert len(out) <= 200
+    assert out.startswith("Hook sentence stays.")
+    assert "message us" in out and "#FYFAI" in out
+    assert trim_to_cap("short", 200, []) == "short"
