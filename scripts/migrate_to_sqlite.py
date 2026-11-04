@@ -41,6 +41,17 @@ def main() -> int:
     if log.exists():
         shutil.copyfile(log, dst_dir / "writes.log")
         print("writes.log carried across")
+    for sidecar in ("standing-brief.txt", "usage_log.jsonl"):
+        f = src_dir / sidecar
+        if f.exists():
+            shutil.copyfile(f, dst_dir / sidecar)
+            print(f"{sidecar} carried across")
+    visuals = src_dir / "visuals"
+    if visuals.is_dir():
+        # Post visuals live beside the datasets and are served from
+        # the data directory; they are store state too.
+        shutil.copytree(visuals, dst_dir / "visuals", dirs_exist_ok=True)
+        print("visuals/ carried across")
     notes = src_dir / "notes"
     if notes.is_dir():
         # The analyst instruments keep their last texts + history
