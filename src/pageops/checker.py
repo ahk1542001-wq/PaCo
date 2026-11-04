@@ -14,6 +14,8 @@ are platform facts, not brand rules.
 
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass, field
 
 # Fallback defaults, used only when the brand data has no list.
@@ -79,6 +81,49 @@ def _quote(text: str, limit: int = 120) -> str:
     if len(snippet) > limit:
         snippet = snippet[:limit] + "..."
     return f'"{snippet}"'
+
+
+def trim_to_cap(text: str, cap: int, protected_markers=()) -> str:
+    """Deterministically trim a caption to the cap, in code.
+
+    Model shortening cannot be trusted to converge: Muse Wonder
+    under-counts Burmese codepoints and trims only a few percent
+    per pass (measured live 2026-11-04: 2,490 -> 2,380 -> 2,387).
+    This fallback drops whole middle sentences, longest first,
+    until the text is under the cap. The opening unit (the hook),
+    any unit carrying a protected marker (the CTA) and any unit
+    with a hashtag are never dropped, and a sentence is never cut
+    in half, so what remains is complete, connected sentences.
+    Returns the text unchanged when no safe trim exists.
+    """
+    if len(text) <= cap:
+        return text
+    parts = re.split(r"([။၊]\s*|\.\s+|!\s+|\?\s+|\n+)", text)
+    units = []  # (body, separator_after)
+    for i in range(0, len(parts), 2):
+        body = parts[i]
+        sep = parts[i + 1] if i + 1 < len(parts) else ""
+        if body or sep:
+            units.append([body, sep])
+    if len(units) <= 1:
+        return text
+    markers = [str(m).lower() for m in (protected_markers or ())]
+
+    def protected(idx):
+        body = units[idx][0].lower()
+        return idx == 0 or "#" in body or any(m in body for m in markers if m)
+
+    def total():
+        return sum(len(b) + len(sep) for b, sep in units)
+
+    while total() > cap:
+        droppable = [i for i in range(len(units)) if not protected(i)]
+        if not droppable:
+            break
+        victim = max(droppable, key=lambda i: len(units[i][0]) + len(units[i][1]))
+        units.pop(victim)
+    out = "".join(b + sep for b, sep in units).strip()
+    return out if len(out) < len(text) else text
 
 
 def check_draft(text: str, platform: str, brand_voice: dict) -> CheckResult:
