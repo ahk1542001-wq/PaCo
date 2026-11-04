@@ -37,8 +37,13 @@ BRAND_VOICE_SEED: dict[str, str] = {
         "run the page themselves (decided 2026-11-04: Myanmar SME "
         "owners broadly, in Myanmar and based in Thailand)"
     ),
-    "tone": "Professional and friendly, plain language, no hype",
+    "tone": (
+        "Professional and friendly, plain language, no hype. "
+        "Captions are written in Burmese (Myanmar language), warm "
+        "and conversational, the way a knowledgeable friend explains"
+    ),
     "rules": (
+        "Write every caption in Burmese (Myanmar language); "
         "Every post needs a clear CTA; "
         "No income-guarantee or get-rich claims; "
         "No real person's name anywhere"
