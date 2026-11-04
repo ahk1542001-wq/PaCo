@@ -48,7 +48,7 @@ from pageops.heartbeat import (  # noqa: E402
 )
 from pageops.pipeline import process_week  # noqa: E402
 from pageops.research import fetch_research  # noqa: E402
-from pageops.store import Store  # noqa: E402
+from pageops.store import open_store  # noqa: E402
 
 
 def _brief_path(settings, supplied: str | None) -> Path:
@@ -120,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    store = Store(settings.data_dir)
+    store = open_store(settings.data_dir)
     if args.if_due and not heartbeat_due(store):
         print("Heartbeat not due; no cycle was run.")
         return 0
