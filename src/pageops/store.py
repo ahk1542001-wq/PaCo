@@ -306,3 +306,116 @@ class Store:
             existing = self.read_dataset("plan")
             row = {**row, "id": str(len(existing) + 1)}
         return self.append_row("plan", row)
+
+
+class SqliteStore(Store):
+    """The same store on SQLite: one database file, `paco.db`.
+
+    Only the persistence primitives are replaced - rows live as JSON
+    documents in one table, in insertion order - so every behaviour
+    above (schema cleaning, the seed + backfill rules, id assignment,
+    the write log, brand parsing) is inherited unchanged and the two
+    backends cannot drift apart semantically. A connection is opened
+    per operation, which keeps the threaded dashboard safe.
+
+    The datasets and their field schemas are the same DATASETS; the
+    Sheets sync contract is untouched.
+    """
+
+    def _connect(self):
+        import sqlite3
+
+        conn = sqlite3.connect(self.data_dir / "paco.db")
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS store_rows "
+            "(dataset TEXT, seq INTEGER, data TEXT)"
+        )
+        return conn
+
+    def _ensure_files(self) -> None:
+        # No CSV files to create or migrate: seed + backfill only,
+        # under exactly the parent class's rules.
+        if not self.read_dataset("brand_voice"):
+            for key, value in BRAND_VOICE_SEED.items():
+                self.append_row("brand_voice", {"key": key, "value": value})
+        existing_keys = {row["key"] for row in self.read_dataset("brand_voice")}
+        for key in BACKFILL_KEYS:
+            if key not in existing_keys:
+                self.append_row(
+                    "brand_voice", {"key": key, "value": BRAND_VOICE_SEED[key]}
+                )
+
+    def read_dataset(self, dataset: str) -> list[dict[str, str]]:
+        if dataset not in DATASETS:
+            raise KeyError(f"Unknown dataset: {dataset}")
+        import json
+
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT data FROM store_rows WHERE dataset = ? ORDER BY seq",
+                (dataset,),
+            ).fetchall()
+        finally:
+            conn.close()
+        return [json.loads(r[0]) for r in rows]
+
+    def write_dataset(self, dataset: str, rows: list[dict[str, str]]) -> None:
+        fields = DATASETS[dataset]
+        import json
+
+        conn = self._connect()
+        try:
+            conn.execute("DELETE FROM store_rows WHERE dataset = ?", (dataset,))
+            conn.executemany(
+                "INSERT INTO store_rows (dataset, seq, data) VALUES (?, ?, ?)",
+                [
+                    (
+                        dataset,
+                        i,
+                        json.dumps(
+                            {f: str(row.get(f, "")) for f in fields},
+                            ensure_ascii=False,
+                        ),
+                    )
+                    for i, row in enumerate(rows)
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def append_row(self, dataset: str, row: dict[str, str]) -> dict[str, str]:
+        fields = DATASETS[dataset]
+        import json
+
+        clean = {f: str(row.get(f, "")) for f in fields}
+        conn = self._connect()
+        try:
+            seq = conn.execute(
+                "SELECT COALESCE(MAX(seq), -1) + 1 FROM store_rows WHERE dataset = ?",
+                (dataset,),
+            ).fetchone()[0]
+            conn.execute(
+                "INSERT INTO store_rows (dataset, seq, data) VALUES (?, ?, ?)",
+                (dataset, seq, json.dumps(clean, ensure_ascii=False)),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        self._log_write(dataset, clean.get("id", "-"), [f for f in fields if clean.get(f)])
+        return clean
+
+
+def open_store(data_dir: Path | str | None = None) -> Store:
+    """Open the store on the backend the environment selects.
+
+    PAGEOPS_STORE_BACKEND=sqlite selects SqliteStore; anything else
+    keeps the CSV store. Entry points (dashboard, cycle runner) go
+    through here so the backend is one switch, not a code change.
+    """
+    import os
+
+    if os.environ.get("PAGEOPS_STORE_BACKEND", "").strip().lower() == "sqlite":
+        return SqliteStore(data_dir)
+    return Store(data_dir)
