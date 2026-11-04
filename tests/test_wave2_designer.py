@@ -233,10 +233,10 @@ def test_character_sheet_asset_is_in_the_repo():
 def test_brand_seed_carries_foundation_keys(tmp_path):
     voice = Store(tmp_path).get_brand_voice()
     assert voice["character_sheet"] == "assets/paco-character-sheet.png"
-    for hexcode in ("#123B8F", "#F5B301", "#F7F5F0", "#14213D"):
+    for hexcode in ("#0B3D2E", "#F4FAF5", "#00B140", "#A6E22E"):
         assert hexcode in voice["brand_colors"]
     assert "Padauk" in voice["brand_fonts"]
-    assert "wordmark" in voice["logo_usage"]
+    assert "Opening Path" in voice["logo_usage"]
     assert "poster 1080x1350" in voice["template_sizes"]
     assert "banner 1640x924" in voice["template_sizes"]
     assert "video frame 1080x1920" in voice["template_sizes"]
