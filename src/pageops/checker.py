@@ -218,18 +218,35 @@ def check_draft(text: str, platform: str, brand_voice: dict) -> CheckResult:
         except (TypeError, ValueError):
             floor = 0
     if floor > 0:
-        results.append(
-            RuleResult(
-                rule="caption_depth",
-                passed=len(text) >= floor,
-                evidence=(
-                    f"{len(text)} chars meets the {floor} char depth floor"
-                    if len(text) >= floor
-                    else f"{len(text)} chars is below the {floor} char depth floor; "
-                    f"draft starts {_quote(text, 60)}"
-                ),
+        cap = PLATFORM_LIMITS.get(platform.lower())
+        if cap is not None and cap < floor:
+            # The platform cannot hold the floor (X's 280 against
+            # a 500 floor): the depth standard was written for
+            # long-form platforms, so the rule stands down here,
+            # with the reason quoted rather than silently skipped.
+            results.append(
+                RuleResult(
+                    rule="caption_depth",
+                    passed=True,
+                    evidence=(
+                        f"depth floor {floor} exceeds the {platform} cap "
+                        f"{cap}; not applied on this platform"
+                    ),
+                )
             )
-        )
+        else:
+            results.append(
+                RuleResult(
+                    rule="caption_depth",
+                    passed=len(text) >= floor,
+                    evidence=(
+                        f"{len(text)} chars meets the {floor} char depth floor"
+                        if len(text) >= floor
+                        else f"{len(text)} chars is below the {floor} char depth floor; "
+                        f"draft starts {_quote(text, 60)}"
+                    ),
+                )
+            )
         # Rule 6 (under the same opt-in): the brand must be named,
         # so a first-time reader knows whose post this is.
         brand_name = str((brand_voice or {}).get("brand_name") or "").strip()
