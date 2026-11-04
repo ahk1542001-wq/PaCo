@@ -49,6 +49,7 @@ BRAND_KEYS = (
     "required_hashtags", "banned_phrases", "cta_markers",
     "character_name", "character_image", "character_rules",
     "character_sheet", "brand_colors", "brand_fonts", "logo_usage",
+    "positioning", "journey",
     "template_sizes", "proof_baseline", "min_caption_chars", "voice_samples",
     "postiz_integration_facebook", "postiz_integration_instagram",
     "postiz_integration_tiktok", "postiz_integration_threads",

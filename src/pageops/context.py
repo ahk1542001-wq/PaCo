@@ -61,47 +61,46 @@ def append_analyst_history(store, stats: dict) -> None:
         fh.write(json.dumps(entry) + "\n")
 
 
+def _extra_summary_parts(store) -> list[str]:
+    parts = []
+    visibility = latest_visibility_summary(store)
+    if visibility:
+        parts.append(f"Visibility audit: {visibility}")
+    content = latest_content_summary(store)
+    if content:
+        parts.append(f"Content analysis: {content}")
+    audience = latest_audience_summary(store)
+    if audience:
+        parts.append(f"Audience: {audience}")
+    try:
+        rows = store.read_dataset("research")
+    except Exception:
+        rows = []
+    if rows:
+        sourced = sum(1 for r in rows if r.get("evidence") == "sourced")
+        unvalidated = sum(1 for r in rows if r.get("evidence") == "unvalidated")
+        gaps = sum(1 for r in rows if r.get("evidence") == "gap")
+        parts.append(
+            f"Research: {sourced} sourced claims, {unvalidated} unvalidated, {gaps} gaps."
+        )
+    return parts
+
+
 def latest_analyst_summary(store) -> str:
     path = _notes_dir(store) / "analyst_history.jsonl"
     if not path.exists():
-        parts = []
-        visibility = latest_visibility_summary(store)
-        if visibility:
-            parts.append(f"Visibility audit: {visibility}")
-        content = latest_content_summary(store)
-        if content:
-            parts.append(f"Content analysis: {content}")
-        audience = latest_audience_summary(store)
-        if audience:
-            parts.append(f"Audience: {audience}")
-        return " ".join(parts)
+        return " ".join(_extra_summary_parts(store))
     lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
     if not lines:
-        parts = []
-        visibility = latest_visibility_summary(store)
-        if visibility:
-            parts.append(f"Visibility audit: {visibility}")
-        content = latest_content_summary(store)
-        if content:
-            parts.append(f"Content analysis: {content}")
-        audience = latest_audience_summary(store)
-        if audience:
-            parts.append(f"Audience: {audience}")
-        return " ".join(parts)
+        return " ".join(_extra_summary_parts(store))
     last = json.loads(lines[-1])
     summary = (
         f"Last period: reach {last['reach']}, engagement {last['engagement']}, "
         f"clicks {last['clicks']} across {last['posts']} posts."
     )
-    visibility = latest_visibility_summary(store)
-    if visibility:
-        summary += f" Visibility audit: {visibility}"
-    content = latest_content_summary(store)
-    if content:
-        summary += f" Content analysis: {content}"
-    audience = latest_audience_summary(store)
-    if audience:
-        summary += f" Audience: {audience}"
+    extras = _extra_summary_parts(store)
+    if extras:
+        summary += " " + " ".join(extras)
     return summary
 
 

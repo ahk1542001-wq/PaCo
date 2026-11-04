@@ -402,6 +402,51 @@ class MetaModelClient:
         result = self.chat(messages, model=self.main_model)
         return result["choices"][0]["message"]["content"].strip()
 
+    def extract_research(self, brief: str, items: list, brand_voice: dict) -> dict:
+        """Extract sourced claims and gaps from gathered items.
+
+        Returns {claims: [{kind, claim, source}], gaps: [str]}.
+        A claim with no source in the items must come back with
+        an empty source; the caller stores it as unvalidated.
+        """
+        instruction = (
+            "Extract business research as JSON: {claims: [{kind: "
+            "market|audience|competitor|channel, claim, source}], "
+            "gaps: []}. Use only facts the gathered items carry; "
+            "copy each claim's source from its item. Where a kind "
+            "has no evidence, name it in gaps. Invent nothing."
+        )
+        return self._structured(
+            with_skills(instruction, "strategist"),
+            {"brief": brief, "items": items, "brand_voice": brand_voice},
+            self.main_model,
+        )
+
+    def draft_brand_level(self, level_name: str, brief: str, brand_voice: dict) -> str:
+        """Draft one Brand Builder level's text from the brief.
+
+        The brand-building skill carries the level shapes; the
+        approved levels below arrive inside the brand data.
+        Returns the level text only.
+        """
+        instruction = (
+            f"Draft the {level_name} level of this brand, from the "
+            "business brief and the brand data (which carries the "
+            "already-approved levels). Follow the level's shape "
+            "exactly: Audience, Positioning and Journey as prose; "
+            "the Offer as one service per line. Invent no fact the "
+            "brief does not carry. Return only the level text."
+        )
+        messages = [
+            {"role": "system", "content": with_skills(instruction, "strategist")},
+            {
+                "role": "user",
+                "content": json.dumps({"brief": brief, "brand_voice": brand_voice}),
+            },
+        ]
+        result = self.chat(messages, model=self.main_model)
+        return result["choices"][0]["message"]["content"].strip()
+
     def adapt_variant(self, text: str, brand_voice: dict, platform: str) -> str:
         """Rewrite one approved master draft natively for a platform.
 
@@ -807,6 +852,27 @@ class MockClient:
             f"with {best.get('engagement', 0)} engagement, so its angle leads "
             "the next plan."
         )
+
+    def extract_research(self, brief: str, items: list, brand_voice: dict) -> dict:
+        return {
+            "claims": [
+                {
+                    "kind": "audience",
+                    "claim": "Buyers message the page at night and expect a fast reply.",
+                    "source": "mock-source",
+                },
+                {
+                    "kind": "market",
+                    "claim": "The segment is large but unmeasured here.",
+                    "source": "",
+                },
+            ],
+            "gaps": [],
+        }
+
+    def draft_brand_level(self, level_name: str, brief: str, brand_voice: dict) -> str:
+        name = brand_voice.get("brand_name") or "the brand"
+        return f"{level_name} for {name}: drafted from the brief ({brief[:80]})."
 
     def adapt_variant(self, text: str, brand_voice: dict, platform: str) -> str:
         from .checker import PLATFORM_LIMITS

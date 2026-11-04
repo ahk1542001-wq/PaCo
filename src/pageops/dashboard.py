@@ -323,6 +323,58 @@ def render_board(store: Store) -> str:
             '<button type="submit">Generate variants</button></form></section>'
         )
 
+    from .brand_builder import LEVELS, level_statuses
+
+    bb_statuses = level_statuses(store)
+    bb_rows = {r["level"]: r for r in store.read_dataset("brand_build")}
+    bb_items = ""
+    for lvl, spec in LEVELS.items():
+        status = bb_statuses[lvl]
+        content = (bb_rows.get(str(lvl)) or {}).get("content", "")
+        preview = html.escape(content[:110])
+        actions = ""
+        if lvl > 1 and status in ("empty", "drafted"):
+            actions += (
+                '<form method="post" action="/brand-level">'
+                f'<input type="hidden" name="level" value="{lvl}">'
+                '<input type="hidden" name="action" value="draft">'
+                '<input name="brief" placeholder="Business brief">'
+                '<button type="submit">Draft</button></form>'
+            )
+        if status == "drafted":
+            actions += (
+                '<form method="post" action="/brand-level">'
+                f'<input type="hidden" name="level" value="{lvl}">'
+                '<input type="hidden" name="action" value="approve">'
+                '<button type="submit">Approve</button></form>'
+            )
+        bb_items += (
+            f"<li>Level {lvl} {html.escape(spec['name'])} [{status}] "
+            f"{preview}{actions}</li>"
+        )
+    brand_builder_panel = (
+        '<section class="panel"><h2>Brand Builder</h2>'
+        f"<ul>{bb_items}</ul></section>"
+    )
+
+    research_panel = ""
+    research_rows = store.read_dataset("research")
+    if research_rows:
+        r_items = "".join(
+            "<li>" + html.escape(
+                f"[{r['evidence']}] {r['kind']}: {r['claim'][:120]}"
+                + (f" ({r['source']})" if r["source"] else "")
+            ) + "</li>"
+            for r in research_rows
+        )
+        research_panel = (
+            '<section class="panel"><h2>Business research</h2>'
+            f"<ul>{r_items}</ul>"
+            '<form method="post" action="/research">'
+            '<input name="brief" placeholder="Business brief">'
+            '<button type="submit">Run research</button></form></section>'
+        )
+
     brief_form = (
         '<section class="panel"><h2>New brief</h2>'
         '<form method="post" action="/brief" class="brief">'
@@ -342,7 +394,7 @@ def render_board(store: Store) -> str:
         "<p>PaCo Agent, a digital marketing and content creation agent: brief, plan, checks, approvals, scheduling, report.</p></header>"
         f"{brief_form}"
         f"<div class='board'>{''.join(columns_html)}</div>"
-        f"{brand_panel}{metrics_panel}{report_panel}{visibility_panel}{content_panel}{audience_panel}{variants_panel}"
+        f"{brand_panel}{metrics_panel}{report_panel}{visibility_panel}{content_panel}{audience_panel}{variants_panel}{brand_builder_panel}{research_panel}"
         "</body></html>"
     )
 
@@ -411,6 +463,26 @@ def make_handler(store: Store):
                     from .pipeline import report_week
 
                     report_week(store, client=get_client())
+                elif self.path == "/research":
+                    from .business_research import run_business_research
+                    from .model_client import get_client
+                    from .research import fetch_research
+
+                    brief = form.get("brief", "")
+                    bundle = fetch_research(brief=brief)
+                    run_business_research(
+                        store, get_client(), brief, bundle.get("items", [])
+                    )
+                elif self.path == "/brand-level":
+                    from .brand_builder import approve_level, draft_level
+
+                    level = int(form.get("level", "0") or 0)
+                    if form.get("action") == "draft":
+                        from .model_client import get_client
+
+                        draft_level(store, level, get_client(), form.get("brief", ""))
+                    elif form.get("action") == "approve":
+                        approve_level(store, level)
                 elif self.path == "/variants":
                     from .model_client import get_client
                     from .variants import generate_variants

@@ -14,7 +14,7 @@ import subprocess
 from .store import DATASETS, Store
 
 SPREADSHEET_ID = "1VGhgw2pj-aW5gh2aeUGEhaD-ERy0FdZ4ReFKybthlKA"
-TAB_NAMES = {"brand_voice": "Brand Voice", "plan": "Plan", "metrics": "Metrics", "insights": "Insights", "variants": "Variants"}
+TAB_NAMES = {"brand_voice": "Brand Voice", "plan": "Plan", "metrics": "Metrics", "insights": "Insights", "variants": "Variants", "brand_build": "Brand Build", "research": "Research"}
 CLI = "/opt/hatch/bin/hatch_gws_cli"
 
 
