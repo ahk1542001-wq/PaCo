@@ -36,9 +36,9 @@ code. A draft that fails the checker is revised once, then flagged.
 
 from __future__ import annotations
 
-from .checker import check_draft
+from .checker import PLATFORM_LIMITS, check_draft
 from .designer import produce_visual
-from .model_client import humanize_text
+from .model_client import humanize_text, shorten_text
 from .store import Store
 
 
@@ -226,12 +226,51 @@ def draft_and_check(
         text, revision_error = humanize_text(client, text, brand)
         humanize_error = humanize_error or revision_error
         result = check_draft(text, item.get("platform", ""), brand)
+    # Length repair: a draft whose ONLY failing rule is the
+    # platform length cap gets one targeted shortening pass. A
+    # full redraft can expand again (a 2,457-char draft survived
+    # its revision on the 2026-11-04 board), so the repair edits
+    # the existing text down to the cap, humanises the result
+    # like every writer output, and re-checks: only a passing
+    # repair is adopted, anything else stays flagged as revised.
+    repair_note = ""
+    failed_rules = [r.rule for r in result.results if not r.passed]
+    if not result.passed and failed_rules == ["length_limit"]:
+        cap = PLATFORM_LIMITS.get((item.get("platform") or "").lower())
+        if cap:
+            before = len(text)
+            shortened, shorten_error = shorten_text(client, text, cap, brand)
+            if shorten_error:
+                repair_note = (
+                    f"\n[LENGTH REPAIR] shortening pass unavailable "
+                    f"({shorten_error}); draft flagged as revised"
+                )
+            else:
+                shortened, repair_error = humanize_text(client, shortened, brand)
+                humanize_error = humanize_error or repair_error
+                repair_result = check_draft(
+                    shortened, item.get("platform", ""), brand
+                )
+                if repair_result.passed:
+                    text, result = shortened, repair_result
+                    repair_note = (
+                        f"\n[LENGTH REPAIR] draft shortened {before} -> "
+                        f"{len(text)} chars to meet the {cap} character "
+                        f"platform cap"
+                    )
+                else:
+                    repair_note = (
+                        f"\n[LENGTH REPAIR] shortened draft still fails "
+                        f"the checks; flagged as revised"
+                    )
     summary = result.summary()
     if humanize_error:
         summary += (
             f"\n[HUMANIZER FALLBACK] humanising pass unavailable "
             f"({humanize_error}); draft checked as generated"
         )
+    if repair_note:
+        summary += repair_note
     # The draft now exists: record it before the check completes, so
     # the board's Drafted column and the write log show the real
     # progression instead of a jump from planned to checked.

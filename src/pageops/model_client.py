@@ -41,6 +41,27 @@ def humanize_text(client, text: str, brand_voice: dict) -> tuple[str, str]:
     return str(out).strip(), ""
 
 
+def shorten_text(client, text: str, max_chars: int, brand_voice: dict) -> tuple[str, str]:
+    """Run a client's shortening pass, with visible degradation.
+
+    Same contract as humanize_text: (text, error), error "" when
+    the pass ran or the client has no pass. Used by the pipeline's
+    length repair: a draft whose ONLY failing rule is the platform
+    length cap gets one targeted shortening instead of relying on
+    a full redraft to land under the cap by luck.
+    """
+    fn = getattr(client, "shorten", None)
+    if fn is None:
+        return text, ""
+    try:
+        out = fn(text, max_chars, brand_voice)
+    except Exception as exc:
+        return text, str(exc)
+    if not out or not str(out).strip():
+        return text, "shortening pass returned an empty rewrite"
+    return str(out).strip(), ""
+
+
 BASE_URL = "https://api.meta.ai/v1"
 BASETEN_BASE_URL = "https://inference.baseten.co/v1"
 MODEL_SPARK = "muse-spark-1.3"
@@ -414,6 +435,38 @@ class MetaModelClient:
         result = self.chat(messages, model=self.main_model)
         return result["choices"][0]["message"]["content"].strip()
 
+    def shorten(self, text: str, max_chars: int, brand_voice: dict) -> str:
+        """One targeted shortening to a character budget.
+
+        The length repair's writer: it edits the existing draft
+        down instead of redrafting, because a redraft can expand
+        again (the 2026-11-04 board held a 2,457-char draft after
+        its revision). Facts, the call to action and hashtags are
+        preserved; sentences stay complete and connected.
+        """
+        target = max(200, max_chars - 50)
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are the brand's editor. Shorten the text to at "
+                    f"most {max_chars} characters (aim for {target} or "
+                    "fewer). Keep the meaning, every fact, the call to "
+                    "action and the hashtags exactly as written. Write "
+                    "complete, connected sentences with soft endings; "
+                    "never chop the text into blunt fragments and never "
+                    "cut a sentence in half. Return only the shortened text."
+                    + ("\n\n" + voice_instruction(brand_voice) if voice_instruction(brand_voice) else "")
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps({"text": text, "brand_voice": brand_voice}),
+            },
+        ]
+        result = self.chat(messages, model=self.main_model)
+        return result["choices"][0]["message"]["content"].strip()
+
 
 class MetaImageClient:
     """Image generation on the Meta Model API (Muse Image).
@@ -643,6 +696,19 @@ class MockClient:
         tests with rewriting doubles, and in production the real
         client rewrites in the brand voice."""
         return text
+
+    def shorten(self, text: str, max_chars: int, brand_voice: dict) -> str:
+        """Offline stand-in: a deterministic trim at the last
+        sentence end inside the budget (the real client rewrites;
+        the mock can only cut)."""
+        if len(text) <= max_chars:
+            return text
+        cut = text[:max_chars]
+        for sep in ("\u104a", ". ", " "):
+            idx = cut.rfind(sep)
+            if idx > max_chars // 2:
+                return cut[: idx + (1 if sep == "\u104a" else 0)].strip()
+        return cut.strip()
 
 
 def get_client(settings=None):
