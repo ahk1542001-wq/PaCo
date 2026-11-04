@@ -402,6 +402,37 @@ class MetaModelClient:
         result = self.chat(messages, model=self.main_model)
         return result["choices"][0]["message"]["content"].strip()
 
+    def adapt_variant(self, text: str, brand_voice: dict, platform: str) -> str:
+        """Rewrite one approved master draft natively for a platform.
+
+        The platform-variants skill carries the per-platform
+        shapes (caps, hashtag counts, the complete-sentence
+        rule); the caller humanises and checks the result like
+        any draft.
+        """
+        from .checker import PLATFORM_LIMITS
+
+        cap = PLATFORM_LIMITS.get(platform, 2000)
+        instruction = (
+            f"Rewrite the approved post below natively for {platform} "
+            f"(hard limit {cap} characters). Return only the rewritten "
+            "post text, no commentary. Keep every brand fact and the "
+            "call to action, add nothing the master does not claim, "
+            "never mention price or cost, and end with the brand's "
+            "required hashtags exactly as the brand data lists them."
+        )
+        messages = [
+            {"role": "system", "content": with_skills(instruction, "copywriter")},
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {"master": text, "brand_voice": brand_voice, "platform": platform}
+                ),
+            },
+        ]
+        result = self.chat(messages, model=self.main_model)
+        return result["choices"][0]["message"]["content"].strip()
+
     def audience_read(self, analysis_text: str, brand_voice: dict) -> str:
         """Interpret the deterministic audience analysis.
 
@@ -776,6 +807,14 @@ class MockClient:
             f"with {best.get('engagement', 0)} engagement, so its angle leads "
             "the next plan."
         )
+
+    def adapt_variant(self, text: str, brand_voice: dict, platform: str) -> str:
+        from .checker import PLATFORM_LIMITS
+
+        cap = PLATFORM_LIMITS.get(platform, 2000)
+        if len(text) <= cap:
+            return text
+        return text[: cap - 1].rstrip() + "\u2026"
 
     def audience_read(self, analysis_text: str, brand_voice: dict) -> str:
         return (

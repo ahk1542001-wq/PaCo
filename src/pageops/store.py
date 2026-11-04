@@ -25,6 +25,7 @@ DATASETS: dict[str, list[str]] = {
         "period_end", "followers", "views", "unique_viewers", "engagements",
         "profile_visits", "new_followers", "unfollowers",
     ],
+    "variants": ["id", "plan_id", "platform", "text", "check_status"],
     "metrics": ["date", "platform", "post_id", "reach", "engagement", "clicks", "notes"],
 }
 
