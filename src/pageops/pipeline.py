@@ -50,8 +50,11 @@ BRAND_KEYS = (
     "character_name", "character_image", "character_rules",
     "character_sheet", "brand_colors", "brand_fonts", "logo_usage",
     "template_sizes", "proof_baseline", "min_caption_chars", "voice_samples",
-    "buffer_channel_facebook", "buffer_channel_instagram",
-    "buffer_channel_tiktok", "buffer_channel_threads", "buffer_channel_x",
+    "postiz_integration_facebook", "postiz_integration_instagram",
+    "postiz_integration_tiktok", "postiz_integration_threads",
+    "postiz_integration_x", "postiz_enabled_facebook",
+    "postiz_enabled_instagram", "postiz_enabled_tiktok",
+    "postiz_enabled_threads", "postiz_enabled_x",
 )
 
 
@@ -477,9 +480,9 @@ def edit_item(
 
 def schedule_approved(store: Store, row_id: str) -> dict:
     """Scheduling goes through the pipeline (the gate lives in scheduler)."""
-    from .scheduler import make_buffer_client, schedule_item
+    from .scheduler import make_postiz_client, schedule_item
 
-    return schedule_item(store, row_id, make_buffer_client(store))
+    return schedule_item(store, row_id, make_postiz_client(store))
 
 
 def link_post(store: Store, row_id: str, post_id: str) -> dict:
