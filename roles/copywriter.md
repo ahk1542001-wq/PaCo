@@ -28,7 +28,11 @@ how it works in steps, what the call to action gives),
 Fitted from Haines `copywriting` and `copy-editing`.
 `humanizer` (blader/humanizer) is the named skill behind the
 humanising edit pass, which runs on the client brand's own
-voice data.
+voice data. Voice samples in the brand data (paragraphs the
+client wrote themselves, added through the brand panel) are
+the tone-of-voice authority for drafting and humanising alike,
+and complete connected sentences are required on every
+platform, short versions included.
 
 ## Tools
 
