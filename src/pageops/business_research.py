@@ -32,6 +32,14 @@ def run_business_research(store: Store, client, brief: str, items: list[dict]) -
     claims = extracted.get("claims") or []
     gaps = list(extracted.get("gaps") or [])
     covered = {c.get("kind") for c in claims}
+    normalised = []
+    for gap in gaps:
+        text = str(gap).strip()
+        if text.lower() in KINDS:
+            text = f"no {text.lower()} evidence found in the gathered sources"
+        if text and text not in normalised:
+            normalised.append(text)
+    gaps = normalised
     for kind in KINDS:
         if kind not in covered and not any(kind in g for g in gaps):
             gaps.append(f"no {kind} evidence found in the gathered sources")
