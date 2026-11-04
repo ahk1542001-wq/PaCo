@@ -239,30 +239,55 @@ def draft_and_check(
         cap = PLATFORM_LIMITS.get((item.get("platform") or "").lower())
         if cap:
             before = len(text)
-            shortened, shorten_error = shorten_text(client, text, cap, brand)
-            if shorten_error:
+            # Measure-and-repeat: the model cannot count Burmese
+            # codepoints reliably (combining marks inflate the
+            # count), so one shortening pass can still land over
+            # the cap. The code measures after every pass and
+            # repeats, up to three passes, until the text is
+            # genuinely under the cap.
+            current = text
+            repair_error = ""
+            passes = 0
+            while len(current) > cap and passes < 3:
+                shortened, repair_error = shorten_text(client, current, cap, brand)
+                if repair_error or len(shortened) >= len(current):
+                    break
+                current = shortened
+                passes += 1
+            if repair_error:
                 repair_note = (
                     f"\n[LENGTH REPAIR] shortening pass unavailable "
-                    f"({shorten_error}); draft flagged as revised"
+                    f"({repair_error}); draft flagged as revised"
                 )
-            else:
-                shortened, repair_error = humanize_text(client, shortened, brand)
-                humanize_error = humanize_error or repair_error
+            elif len(current) <= cap:
+                current, repair_herr = humanize_text(client, current, brand)
+                humanize_error = humanize_error or repair_herr
+                if len(current) > cap:
+                    # The humaniser re-expanded it: one last cut,
+                    # adopted only if it lands under the cap.
+                    shortened, repair_error = shorten_text(client, current, cap, brand)
+                    if not repair_error and len(shortened) <= cap:
+                        current = shortened
                 repair_result = check_draft(
-                    shortened, item.get("platform", ""), brand
+                    current, item.get("platform", ""), brand
                 )
                 if repair_result.passed:
-                    text, result = shortened, repair_result
+                    text, result = current, repair_result
                     repair_note = (
                         f"\n[LENGTH REPAIR] draft shortened {before} -> "
-                        f"{len(text)} chars to meet the {cap} character "
-                        f"platform cap"
+                        f"{len(text)} chars in {passes} pass(es) to meet "
+                        f"the {cap} character platform cap"
                     )
                 else:
                     repair_note = (
-                        f"\n[LENGTH REPAIR] shortened draft still fails "
-                        f"the checks; flagged as revised"
+                        "\n[LENGTH REPAIR] shortened draft still fails "
+                        "the checks; flagged as revised"
                     )
+            else:
+                repair_note = (
+                    f"\n[LENGTH REPAIR] draft still over the cap after "
+                    f"{passes} shortening pass(es); flagged as revised"
+                )
     summary = result.summary()
     if humanize_error:
         summary += (

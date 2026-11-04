@@ -444,7 +444,7 @@ class MetaModelClient:
         its revision). Facts, the call to action and hashtags are
         preserved; sentences stay complete and connected.
         """
-        target = max(200, max_chars - 50)
+        target = max(200, int(max_chars * 0.8))
         messages = [
             {
                 "role": "system",
@@ -452,7 +452,10 @@ class MetaModelClient:
                     "You are the brand's editor. Shorten the text to at "
                     f"most {max_chars} characters (aim for {target} or "
                     "fewer). Keep the meaning, every fact, the call to "
-                    "action and the hashtags exactly as written. Write "
+                    "action and the hashtags exactly as written. The "
+                    "count is measured by a computer character by "
+                    "character, and Burmese combining marks count as "
+                    "characters too, so write well under the limit. Write "
                     "complete, connected sentences with soft endings; "
                     "never chop the text into blunt fragments and never "
                     "cut a sentence in half. Return only the shortened text."

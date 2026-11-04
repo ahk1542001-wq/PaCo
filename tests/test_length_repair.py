@@ -85,3 +85,30 @@ def test_mock_shorten_trims_inside_the_budget():
     out = client.shorten(LONG, 2000, {})
     assert 0 < len(out) <= 2000
     assert client.shorten("short", 2000, {}) == "short"
+
+
+class StubbornClient(MockClient):
+    """Each shortening pass only trims a little (the model
+    under-counts Burmese codepoints); the repair must measure
+    and repeat until the text is genuinely under the cap."""
+
+    def __init__(self):
+        self.shorten_calls = 0
+
+    def generate_draft(self, plan_item, brand_voice):
+        return {"platform": "facebook", "text": LONG, "hashtags": []}
+
+    def shorten(self, text, max_chars, brand_voice):
+        self.shorten_calls += 1
+        keep = int(len(text) * 0.7)
+        return text[:keep] + " message us #FYFAI #AIAutomation #SME"
+
+
+def test_repair_repeats_until_under_the_cap(tmp_path):
+    store = Store(tmp_path)
+    client = StubbornClient()
+    updated = draft_and_check(store, client, _row(store))
+    assert client.shorten_calls >= 2
+    assert updated["status"] == "awaiting_approval"
+    assert len(updated["draft"]) <= 2000
+    assert "pass(es)" in updated["check_status"]
