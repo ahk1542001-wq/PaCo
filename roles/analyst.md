@@ -22,8 +22,12 @@
 
 ## Skills
 
-gtm-fleet `performance-report`; Haines `analytics`; the Meta Ads
-set (`meta-ads-analyzer`, `claude-ads`).
+Loaded at call time from `skills/analyst/` and appended to
+every narrative prompt: `reporting` (goal, strategy, execution,
+result; numbers only from the metrics store; the decision
+first). Fitted from gtm-fleet `performance-report` and Haines
+`analytics`; the Meta Ads set (`meta-ads-analyzer`, `claude-ads`)
+stays the reference for the future ads layer.
 
 ## Tools
 
