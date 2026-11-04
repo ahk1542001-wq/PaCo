@@ -707,10 +707,10 @@ class MockClient:
         if len(text) <= max_chars:
             return text
         cut = text[:max_chars]
-        for sep in ("\u104a", ". ", " "):
+        for sep in ("\u104b", "\u104a", ". ", " "):
             idx = cut.rfind(sep)
             if idx > max_chars // 2:
-                return cut[: idx + (1 if sep == "\u104a" else 0)].strip()
+                return cut[: idx + (1 if sep in ("\u104b", "\u104a") else 0)].strip()
         return cut.strip()
 
 
