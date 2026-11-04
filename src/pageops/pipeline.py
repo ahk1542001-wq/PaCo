@@ -570,6 +570,39 @@ def run_content_analysis(store: Store, client=None) -> dict:
     return result
 
 
+def run_audience_analysis(store: Store, client=None) -> dict:
+    """The Analyst's audience stage act: build the snapshot
+    comparison, record it, and file the summary the Strategist
+    reads when planning."""
+    from .audience import build_audience_analysis
+    from .context import append_audience_history, save_last_audience_analysis
+
+    result = build_audience_analysis(store, client=client)
+    save_last_audience_analysis(store, result["text"])
+    snapshots = result["analysis"]["snapshots"]
+    if snapshots:
+        latest = snapshots[-1]
+        deltas = result["analysis"]["deltas"]
+        views = deltas.get("views", {})
+        trend = (
+            f"; views {views.get('change', 0):+d} ({views.get('pct', 0.0)}%) period over period"
+            if views
+            else ""
+        )
+        summary = f"{latest['followers']} followers at {latest['period_end']}{trend}"
+    else:
+        summary = "no insights snapshots yet"
+    append_audience_history(store, summary)
+    return result
+
+
+def last_audience_analysis(store: Store) -> str:
+    """The latest recorded audience analysis ("" until one runs)."""
+    from .context import load_last_audience_analysis
+
+    return load_last_audience_analysis(store)
+
+
 def last_content_analysis(store: Store) -> str:
     """The latest recorded content analysis ("" until one runs)."""
     from .context import load_last_content_analysis

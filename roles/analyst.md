@@ -4,6 +4,10 @@
 
 - The weekly performance report, in goal, strategy, execution,
   result shape, including ads analysis.
+- The audience analysis: page-insights snapshots compared
+  period over period (followers, views, unique viewers,
+  engagements, profile visits), with engagements-per-100-views
+  and followers-per-100-visits ratios computed in code.
 - The content analysis: measured posts joined back to their
   plan rows and broken down by topic and format, ranked by
   engagement rate with join coverage stated.
@@ -34,7 +38,8 @@ Loaded at call time from `skills/analyst/` and appended to
 every narrative prompt: `reporting` (goal, strategy, execution,
 result; numbers only from the metrics store; the decision
 first), `visibility` (the SEO/GEO/AEO audit method) and
-`content-analysis` (join, rank by rate, state coverage). Fitted from gtm-fleet `performance-report` and Haines
+`content-analysis` (join, rank by rate, state coverage) and
+`audience-analysis` (snapshots, deltas with bases, two ratios). Fitted from gtm-fleet `performance-report` and Haines
 `analytics`; the Meta Ads set (`meta-ads-analyzer`, `claude-ads`)
 stays the reference for the future ads layer.
 
