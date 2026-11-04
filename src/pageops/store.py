@@ -25,6 +25,8 @@ DATASETS: dict[str, list[str]] = {
         "period_end", "followers", "views", "unique_viewers", "engagements",
         "profile_visits", "new_followers", "unfollowers",
     ],
+    "research": ["id", "kind", "claim", "source", "evidence", "recorded"],
+    "brand_build": ["id", "level", "status", "content", "updated"],
     "variants": ["id", "plan_id", "platform", "text", "check_status"],
     "metrics": ["date", "platform", "post_id", "reach", "engagement", "clicks", "notes"],
 }
@@ -261,6 +263,8 @@ class Store:
             "logo_usage": raw.get("logo_usage", ""),
             "template_sizes": raw.get("template_sizes", ""),
             "proof_baseline": raw.get("proof_baseline", ""),
+            "positioning": raw.get("positioning", ""),
+            "journey": raw.get("journey", ""),
         }
         for key in ("banned_phrases", "cta_markers"):
             if raw.get(key, "").strip():

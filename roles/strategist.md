@@ -3,6 +3,13 @@
 ## Owns
 
 - Trend and competitor research, with a source link on every item.
+- Business research ahead of Brand Builder: market, audience,
+  competitor and channel claims in the research dataset, each
+  sourced or stored unvalidated, with gaps recorded per kind.
+- The Brand Builder workflow: the five brand levels drafted in
+  order (Audience, Positioning, Offer, Journey; Identity is
+  recorded from design work), each gated on the owner's approval
+  of the level below, approval writing into the brand data.
 - The 7-day content plan (topic, angle, format, platform, slot)
   built from the brief, the brand voice and the brand's own past
   performance.
