@@ -59,6 +59,26 @@ MODEL_IMAGE = "muse-image-1.0"
 # cost matters.
 
 
+def voice_instruction(brand_voice: dict) -> str:
+    """The tone-of-voice block for writer prompts, or "".
+
+    When the client has sent paragraphs they wrote themselves
+    (brand data key `voice_samples`, owner's requirement
+    2026-11-04), those samples are the authority on the brand's
+    tone of voice: every writer is told to match them. Brands
+    without samples get no block at all.
+    """
+    samples = str((brand_voice or {}).get("voice_samples") or "").strip()
+    if not samples:
+        return ""
+    return (
+        "The client wrote the following paragraphs themselves. They are "
+        "the authority on this brand's tone of voice: match their "
+        "sentence rhythm, warmth, level of formality and word choices "
+        "in everything you write.\n\nVoice samples:\n" + samples
+    )
+
+
 class UsageLogger:
     """Appends one JSON line per API call to the usage log file."""
 
@@ -323,6 +343,9 @@ class MetaModelClient:
                 "(only claims the brand data supports; never invent results, "
                 "customers or testimonials), and a final call-to-action line."
             )
+        block = voice_instruction(brand_voice)
+        if block:
+            instruction += "\n\n" + block
         return self._structured(
             with_skills(instruction, "copywriter"),
             {"plan_item": plan_item, "brand_voice": brand_voice},
@@ -380,6 +403,7 @@ class MetaModelClient:
                     "claims, results, customers or testimonials that are not "
                     "in the text. Return only the rewritten text."
                     + ("\n\n" + load_skills("copywriter") if load_skills("copywriter") else "")
+                    + ("\n\n" + voice_instruction(brand_voice) if voice_instruction(brand_voice) else "")
                 ),
             },
             {
