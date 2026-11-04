@@ -61,20 +61,36 @@ BRAND_VOICE_SEED: dict[str, str] = {
     # the case study baseline). Recorded as data so the brand record
     # lives outside code; the owner's supplied brand files replace
     # them in one swap when they land.
+    # Identity loaded 2026-11-04: the finished FYF AI brand identity
+    # (owner-decided logo + palette, brand guidelines book) replaces
+    # the interim navy/gold tokens recorded from the designer tokens.
     "brand_colors": (
-        "Primary #123B8F; Accent #F5B301; Background #F7F5F0; Ink #14213D"
+        "Deep Forest #0B3D2E (main, 55%: trust and all text); "
+        "Fresh Paper #F4FAF5 (background, 20%); Live Green #00B140 "
+        "(energy accent, 15%: symbol on dark versions, highlights, "
+        "calls to action); Lime Spark #A6E22E (spark accent, 10%, "
+        "sparing). Body text is always Deep Forest: Live Green on "
+        "Fresh Paper measures only 2.69 contrast"
     ),
     "brand_fonts": (
-        "Padauk, a single font family for all text (Bold, then Regular); "
-        "wordmark 64 px; headline 72 px stepping down to a 28 px minimum; "
-        "angle subline 44 px; footer line 40 px; the Pillow default bitmap "
-        "font only if Padauk is missing"
+        "Padauk for brand headlines and body text; Noto Sans Myanmar "
+        "up to Black 900 where a heavier headline is needed; the "
+        "wordmark is vector artwork in the logo kit, never typed text"
     ),
     "logo_usage": (
-        "Text wordmark only: the words FYF AI in white Padauk on the "
-        "primary #123B8F top band; no logo files or artwork exist; "
-        "artwork rules (clear space, minimum size, approved colourways) "
-        "are to confirm with the supplied brand files"
+        "The Opening Path symbol: a central Y opening wide like a "
+        "road into the future, the two Fs embedded as curved flanks "
+        "(FYF = For Your Future). Master artwork in the brand kit "
+        "(symbol SVGs in forest, live green, lime, black and white; "
+        "horizontal and stacked lockups; app icon; favicons). "
+        "Primary lockup: forest symbol and wordmark with the FOR "
+        "YOUR FUTURE tagline; on dark backgrounds the Live Green "
+        "symbol with a Fresh Paper wordmark. Clear space is 25% of "
+        "the symbol height on all sides; minimum size 32 px digital "
+        "or 12 mm print. Letters are either absent or embedded in "
+        "the mark, never plain big letters. Never stretch, rotate, "
+        "recolour outside the palette, add shadows, or place the "
+        "mark on clashing backgrounds"
     ),
     "template_sizes": (
         "poster 1080x1350; thumb 1080x1080; banner 1640x924; "
