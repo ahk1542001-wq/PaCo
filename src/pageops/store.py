@@ -271,19 +271,23 @@ class Store:
         # that never send samples are never sample-matched.
         if raw.get("voice_samples", "").strip():
             voice["voice_samples"] = raw["voice_samples"].strip()
-        # Connected Buffer channels per platform (the ready-to-
-        # connect data, owner's direction 2026-11-04): the owner
-        # pastes each platform's Buffer profile id into the brand
-        # data, and live scheduling resolves the item's platform
-        # against this map. Opt-in like the rest: unconnected
-        # platforms are simply absent.
-        channels = {}
+        # Connected Postiz channels per platform (owner's
+        # direction, 2026-11-04): each platform connects one by
+        # one in the product, its integration id stored as brand
+        # data, and each carries its own on/off toggle. A
+        # connected platform is ON unless its toggle is set to
+        # off. Unconnected platforms are simply absent.
+        postiz_channels = {}
         for platform in ("facebook", "instagram", "tiktok", "threads", "x"):
-            value = raw.get(f"buffer_channel_{platform}", "").strip()
-            if value:
-                channels[platform] = value
-        if channels:
-            voice["buffer_channels"] = channels
+            integration = raw.get(f"postiz_integration_{platform}", "").strip()
+            if integration:
+                toggle = raw.get(f"postiz_enabled_{platform}", "").strip().lower()
+                postiz_channels[platform] = {
+                    "integration": integration,
+                    "enabled": toggle not in ("off", "0", "no", "false"),
+                }
+        if postiz_channels:
+            voice["postiz_channels"] = postiz_channels
         return voice
 
     def add_plan_row(self, row: dict[str, str]) -> dict[str, str]:

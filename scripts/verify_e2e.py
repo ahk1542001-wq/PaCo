@@ -23,7 +23,7 @@ from pageops.context import latest_analyst_summary, load_trend_notes  # noqa: E4
 from pageops.model_client import MockClient, get_client  # noqa: E402
 from pageops.metrics import import_metrics  # noqa: E402
 from pageops.pipeline import fetch_trends, process_week, report_week  # noqa: E402
-from pageops.scheduler import BufferClient, schedule_item  # noqa: E402
+from pageops.scheduler import PostizClient, schedule_item  # noqa: E402
 from pageops.store import Store  # noqa: E402
 
 BRIEF = "Promote the chatbot offer to SME page owners this week"
@@ -56,13 +56,13 @@ def run_checks(data_dir: Path) -> list[tuple[str, bool, str]]:
 
     # The gate: an unapproved item must be refused by the scheduler.
     try:
-        schedule_item(store, rows[0]["id"], BufferClient())
+        schedule_item(store, rows[0]["id"], PostizClient())
         check("scheduler refuses unapproved", False, "no error raised")
     except PermissionError as exc:
         check("scheduler refuses unapproved", True, str(exc)[:80])
 
     store.update_row("plan", rows[0]["id"], {"status": "approved"})
-    scheduled = schedule_item(store, rows[0]["id"], BufferClient())
+    scheduled = schedule_item(store, rows[0]["id"], PostizClient())
     check(
         "approved item schedules (dry-run)",
         scheduled.get("buffer_id", "").startswith("dry-run-"),

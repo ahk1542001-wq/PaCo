@@ -5,38 +5,45 @@ is "approved" (a human clicked Approve on the dashboard). The gate lives
 here, in the scheduling layer itself, not in the UI, so no caller can
 bypass it.
 
-Buffer runs in dry-run mode until the connection is made in the
-product (owner's direction, 2026-11-04: real profiles connect in
-the product, not outside it). Going live takes exactly two things,
-both already in the product: a Buffer API key in the settings
-(BUFFER_API_KEY) and each platform's Buffer profile id in the
-brand data (buffer_channel_<platform>, editable in the dashboard
-brand panel). With neither, scheduling records exactly what would
-be sent and changes nothing outside the store. A live failure
-raises and the item stays approved: it is never marked scheduled
-on a failed send.
+Publishing runs through Postiz (owner's decision, 2026-11-04):
+open-source and self-hosted on the owner's own VM, so no
+per-channel fees, and every platform connects in the product, one
+by one, each with its own on/off toggle. (Buffer was the earlier
+placeholder seam; its free tier caps at 3 channels and 5 would
+cost real money, so the live target moved. The store column that
+holds the returned queue id is still called buffer_id for schema
+stability.)
+
+Dry-run until the connection is made in the product: live takes a
+Postiz base URL and API key in the settings (POSTIZ_BASE_URL,
+POSTIZ_API_KEY) plus each platform's Postiz integration id in the
+brand data (postiz_integration_<platform>, editable in the
+dashboard brand panel). A connected platform is ON unless its
+postiz_enabled_<platform> toggle is set to off; a switched-off
+platform refuses scheduling with a clear reason and the item
+stays approved. Any live failure raises and the item stays
+approved: it is never marked scheduled on a failed send.
 """
 
 from __future__ import annotations
 
 from .store import Store
 
-BUFFER_API_URL = "https://api.bufferapp.com/1/updates/create.json"
 
-
-def _default_post(url, data):
+def _default_post(url, json_body, headers):
     import httpx
 
-    return httpx.post(url, data=data, timeout=30)
+    return httpx.post(url, json=json_body, headers=headers, timeout=30)
 
 
-class BufferClient:
-    """Buffer scheduling client. Dry-run unless a real key is provided."""
+class PostizClient:
+    """Postiz scheduling client. Dry-run unless URL and key are set."""
 
-    def __init__(self, api_key: str | None = None, channels: dict | None = None, post=None):
+    def __init__(self, api_key=None, base_url=None, channels=None, post=None):
         self.api_key = api_key or None
-        self.channels = {str(k).lower(): v for k, v in (channels or {}).items()}
-        self.dry_run = not self.api_key
+        self.base_url = (base_url or "").rstrip("/")
+        self.channels = channels or {}
+        self.dry_run = not (self.api_key and self.base_url)
         self._post = post or _default_post
 
     def schedule(self, item: dict) -> str:
@@ -44,52 +51,68 @@ class BufferClient:
         if self.dry_run:
             return f"dry-run-{item['id']}"
         platform = (item.get("platform") or "").lower()
-        channel = self.channels.get(platform)
-        if not channel:
+        entry = self.channels.get(platform) or {}
+        integration = entry.get("integration")
+        if not integration:
             raise RuntimeError(
-                f"No Buffer channel connected for platform {platform!r}: "
-                f"add the platform's Buffer profile id as "
-                f"buffer_channel_{platform} in the brand panel first."
+                f"No Postiz channel connected for platform {platform!r}: "
+                f"connect it in Postiz, then add its integration id as "
+                f"postiz_integration_{platform} in the brand panel."
             )
-        payload = {
-            "access_token": self.api_key,
-            "text": item.get("draft", ""),
-            "profile_ids[]": channel,
+        if not entry.get("enabled", True):
+            raise RuntimeError(
+                f"Platform {platform!r} is switched off in the product "
+                f"(postiz_enabled_{platform}); the item stays approved "
+                f"and nothing was sent."
+            )
+        body = {
+            "type": "schedule" if item.get("scheduled_for") else "now",
+            "shortLink": True,
+            "tags": [],
+            "posts": [
+                {
+                    "integration": {"id": integration},
+                    "value": [{"content": item.get("draft", ""), "image": []}],
+                    "settings": {"__type": platform},
+                }
+            ],
         }
         if item.get("scheduled_for"):
-            payload["scheduled_at"] = item["scheduled_for"]
+            body["date"] = item["scheduled_for"]
         try:
-            resp = self._post(BUFFER_API_URL, payload)
+            resp = self._post(
+                f"{self.base_url}/public/v1/posts",
+                body,
+                {"Authorization": self.api_key},
+            )
             resp.raise_for_status()
-            body = resp.json()
+            payload = resp.json()
         except Exception as exc:
             raise RuntimeError(
-                f"Buffer scheduling failed for item {item.get('id')}: {exc}"
+                f"Postiz scheduling failed for item {item.get('id')}: {exc}"
             ) from exc
-        updates = body.get("updates") or []
-        update_id = str(updates[0].get("id") or "") if updates else ""
-        if not body.get("success", False) or not update_id:
-            raise RuntimeError(
-                f"Buffer scheduling failed for item {item.get('id')}: "
-                f"{body.get('message') or body}"
-            )
-        return update_id
+        post_id = ""
+        if isinstance(payload, list) and payload and isinstance(payload[0], dict):
+            post_id = str(payload[0].get("id") or "")
+        elif isinstance(payload, dict):
+            post_id = str(payload.get("id") or "")
+        return post_id or "postiz-queued"
 
 
-def make_buffer_client(store: Store, settings=None) -> BufferClient:
+def make_postiz_client(store: Store, settings=None) -> PostizClient:
     """Build the client from the product's own connection data:
-    the API key from settings, the per-platform channels from the
-    brand data. This is the ready-to-connect seam: filling those
-    two in is the whole connection step."""
+    the instance URL and API key from settings, the per-platform
+    integrations and toggles from the brand data. Filling those in
+    is the whole connection step."""
     if settings is None:
         from .config import get_settings
 
         settings = get_settings()
-    channels = store.get_brand_voice().get("buffer_channels", {})
-    return BufferClient(api_key=settings.buffer_api_key, channels=channels)
+    channels = store.get_brand_voice().get("postiz_channels", {})
+    return PostizClient(settings.postiz_api_key, settings.postiz_base_url, channels)
 
 
-def schedule_item(store: Store, item_id: str, buffer_client: BufferClient) -> dict:
+def schedule_item(store: Store, item_id: str, client: PostizClient) -> dict:
     """Schedule one item. Raises PermissionError unless it is approved."""
     rows = {r["id"]: r for r in store.read_dataset("plan")}
     row = rows.get(str(item_id))
@@ -100,7 +123,7 @@ def schedule_item(store: Store, item_id: str, buffer_client: BufferClient) -> di
             f"Plan item {item_id} has status {row.get('status')!r}; "
             "only 'approved' items can be scheduled."
         )
-    queue_id = buffer_client.schedule(row)
+    queue_id = client.schedule(row)
     return store.update_row(
         "plan", row["id"], {"status": "scheduled", "buffer_id": queue_id}
     )
