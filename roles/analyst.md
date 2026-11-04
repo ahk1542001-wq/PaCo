@@ -4,6 +4,9 @@
 
 - The weekly performance report, in goal, strategy, execution,
   result shape, including ads analysis.
+- The content analysis: measured posts joined back to their
+  plan rows and broken down by topic and format, ranked by
+  engagement rate with join coverage stated.
 - The visibility audit (SEO, GEO, AEO): deterministic checks
   over the drafted content and brand data (searchable openings,
   question-and-answer shape, brand entity and keyword spine,
@@ -30,7 +33,8 @@
 Loaded at call time from `skills/analyst/` and appended to
 every narrative prompt: `reporting` (goal, strategy, execution,
 result; numbers only from the metrics store; the decision
-first) and `visibility` (the SEO/GEO/AEO audit method). Fitted from gtm-fleet `performance-report` and Haines
+first), `visibility` (the SEO/GEO/AEO audit method) and
+`content-analysis` (join, rank by rate, state coverage). Fitted from gtm-fleet `performance-report` and Haines
 `analytics`; the Meta Ads set (`meta-ads-analyzer`, `claude-ads`)
 stays the reference for the future ads layer.
 
