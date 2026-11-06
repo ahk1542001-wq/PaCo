@@ -498,17 +498,24 @@ def render_board(store: Store) -> str:
     from .pipeline import BRAND_KEYS
 
     raw_brand = {r["key"]: r["value"] for r in store.read_dataset("brand_voice")}
-    # Edit forms only for keys the pipeline will accept, so the
-    # render surface and the write surface cannot drift apart.
-    edit_forms = "".join(
-        '<form method="post" action="/brand" class="brandedit">'
-        f'<label>{html.escape(k)}</label>'
-        f'<input type="hidden" name="key" value="{html.escape(k)}">'
-        f'<input name="value" value="{html.escape(v)}">'
-        '<button class="btn-secondary" type="submit">Save</button></form>'
-        for k, v in raw_brand.items()
-        if k in BRAND_KEYS
-    )
+    # One edit form per allowlisted key, existing value or blank:
+    # the render surface is BRAND_KEYS itself, so a key the owner
+    # has never set (a connect-day input, say) is still reachable,
+    # and the render surface and the write surface cannot drift
+    # apart. Stored secrets render as password fields.
+    secret_keys = ("fb_access_token", "postiz_api_key")
+    form_parts = []
+    for k in BRAND_KEYS:
+        value = html.escape(raw_brand.get(k, ""))
+        input_type = ' type="password"' if k in secret_keys else ""
+        form_parts.append(
+            '<form method="post" action="/brand" class="brandedit">'
+            f'<label>{html.escape(k)}</label>'
+            f'<input type="hidden" name="key" value="{html.escape(k)}">'
+            f'<input{input_type} name="value" value="{value}">'
+            '<button class="btn-secondary" type="submit">Save</button></form>'
+        )
+    edit_forms = "".join(form_parts)
     brand_panel = (
         '<section class="panel" id="brand"><h2>Brand voice</h2>'
         f"<div>Audience: {html.escape(brand['audience'])}</div>"

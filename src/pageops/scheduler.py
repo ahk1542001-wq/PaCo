@@ -15,8 +15,9 @@ holds the returned queue id is still called buffer_id for schema
 stability.)
 
 Dry-run until the connection is made in the product: live takes a
-Postiz base URL and API key in the settings (POSTIZ_BASE_URL,
-POSTIZ_API_KEY) plus each platform's Postiz integration id in the
+Postiz base URL and API key (the settings POSTIZ_BASE_URL /
+POSTIZ_API_KEY, or the postiz_base_url / postiz_api_key brand
+keys) plus each platform's Postiz integration id in the
 brand data (postiz_integration_<platform>, editable in the
 dashboard brand panel). A connected platform is ON unless its
 postiz_enabled_<platform> toggle is set to off; a switched-off
@@ -100,16 +101,33 @@ class PostizClient:
 
 
 def make_postiz_client(store: Store, settings=None) -> PostizClient:
-    """Build the client from the product's own connection data:
-    the instance URL and API key from settings, the per-platform
-    integrations and toggles from the brand data. Filling those in
-    is the whole connection step."""
+    """Build the client from the product's own connection data.
+
+    The instance URL and API key resolve settings-first (the
+    environment), then the brand data (postiz_base_url /
+    postiz_api_key, pasted into the dashboard brand panel) — the
+    same env-first pattern as fb_insights.resolve_fb_config, so
+    connect day needs no env editing. The per-platform
+    integrations and toggles come from the brand data. Filling
+    those in is the whole connection step.
+    """
     if settings is None:
         from .config import get_settings
 
         settings = get_settings()
+    brand = {r["key"]: r["value"] for r in store.read_dataset("brand_voice")}
+    api_key = (
+        settings.postiz_api_key
+        or (brand.get("postiz_api_key") or "").strip()
+        or None
+    )
+    base_url = (
+        settings.postiz_base_url
+        or (brand.get("postiz_base_url") or "").strip()
+        or None
+    )
     channels = store.get_brand_voice().get("postiz_channels", {})
-    return PostizClient(settings.postiz_api_key, settings.postiz_base_url, channels)
+    return PostizClient(api_key, base_url, channels)
 
 
 def schedule_item(store: Store, item_id: str, client: PostizClient) -> dict:

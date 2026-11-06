@@ -56,6 +56,9 @@ BRAND_KEYS = (
     "postiz_integration_x", "postiz_enabled_facebook",
     "postiz_enabled_instagram", "postiz_enabled_tiktok",
     "postiz_enabled_threads", "postiz_enabled_x",
+    "postiz_base_url", "postiz_api_key",
+    "fb_page_id", "fb_access_token",
+    "heartbeat_weekday", "heartbeat_time", "heartbeat_timezone",
 )
 
 

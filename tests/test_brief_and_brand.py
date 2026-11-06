@@ -46,6 +46,24 @@ def test_update_brand_voice_refuses_unknown_keys(tmp_path):
         update_brand_voice(store, "not_a_real_key", "x")
 
 
+def test_update_brand_voice_accepts_connect_day_and_heartbeat_keys(tmp_path):
+    store = Store(tmp_path)
+    for key in (
+        "postiz_base_url",
+        "postiz_api_key",
+        "fb_page_id",
+        "fb_access_token",
+        "heartbeat_weekday",
+        "heartbeat_time",
+        "heartbeat_timezone",
+    ):
+        update_brand_voice(store, key, "x")
+    raw = {r["key"]: r["value"] for r in store.read_dataset("brand_voice")}
+    assert raw["postiz_base_url"] == "x"
+    assert raw["fb_access_token"] == "x"
+    assert raw["heartbeat_timezone"] == "x"
+
+
 def _start(store):
     server = serve(store, port=0)
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -99,3 +117,19 @@ def test_board_shows_brief_check_and_only_writable_brand_forms(tmp_path):
     assert "missing: offer" in board
     assert 'value="tone"' in board  # a writable key gets a form
     assert "legacy_stray" not in board  # an unwritable key does not
+
+
+def test_board_offers_forms_for_absent_allowlisted_keys(tmp_path):
+    from pageops.dashboard import render_board
+
+    store = Store(tmp_path)
+    board = render_board(store)
+    # Allowlisted keys with no stored row still get an edit form,
+    # so the connect-day values can be entered from the dashboard
+    # before they exist as data.
+    assert 'value="fb_page_id"' in board
+    assert 'value="postiz_base_url"' in board
+    assert 'value="heartbeat_time"' in board
+    # Stored secrets render as password fields, not plain inputs.
+    assert 'value="postiz_api_key"><input type="password"' in board
+    assert 'value="fb_access_token"><input type="password"' in board
