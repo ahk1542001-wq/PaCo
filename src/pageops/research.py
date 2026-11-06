@@ -125,13 +125,14 @@ def queries_for_brief(brief: str) -> tuple:
     return tuple(queries[:3])
 
 
-def fetch_research(feeds_file=None, queries=None, brief: str = "") -> dict:
+def fetch_research(feeds_file=None, queries=None, brief: str = "", store=None) -> dict:
     """Trend bundle: Agent-Reach first, RSS fallback, provenance kept.
 
     Returns {"items": [...], "backend": "agent-reach" | "rss",
     "detail": str}. Never raises for a research failure: the RSS
     fallback is part of the contract, and if even that fails the
-    caller (pipeline) treats trends as absent, as before.
+    caller (pipeline) treats trends as absent, as before. With a
+    store, the RSS fallback reads the brand's own feed list.
     """
     if queries is None:
         queries = queries_for_brief(brief)
@@ -145,8 +146,12 @@ def fetch_research(feeds_file=None, queries=None, brief: str = "") -> dict:
     except Exception as exc:
         from .rss import fetch_feeds
 
+        if store is not None:
+            items = fetch_feeds(feeds_file, store=store)
+        else:
+            items = fetch_feeds(feeds_file)
         return {
-            "items": fetch_feeds(feeds_file),
+            "items": items,
             "backend": "rss",
             "detail": f"agent-reach unavailable ({exc}); RSS feeds used",
         }

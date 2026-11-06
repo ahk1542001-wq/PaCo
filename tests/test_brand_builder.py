@@ -8,7 +8,7 @@ correction that a staircase is walked one step at a time).
 """
 import pytest
 
-from pageops.brand_builder import approve_level, draft_level, level_statuses
+from pageops.brand_builder import approve_level, draft_level, edit_level, level_statuses
 from pageops.model_client import MockClient
 from pageops.pipeline import update_brand_voice
 from pageops.store import Store
@@ -77,3 +77,21 @@ def test_approve_without_a_draft_refuses(tmp_path):
     store = _identity_done(tmp_path)
     with pytest.raises(ValueError):
         approve_level(store, 2)
+
+
+def test_edit_level_updates_content_and_stays_drafted(tmp_path):
+    store = _identity_done(tmp_path)
+    draft_level(store, 2, MockClient(), BRIEF)
+    edit_level(store, 2, "Edited audience: owners in Mandalay.")
+    assert level_statuses(store)[2] == "drafted"
+    row = [r for r in store.read_dataset("brand_build") if r["level"] == "2"][0]
+    assert row["content"] == "Edited audience: owners in Mandalay."
+    # Approval publishes the EDITED text into the brand data.
+    approve_level(store, 2)
+    assert store.get_brand_voice()["audience"] == "Edited audience: owners in Mandalay."
+
+
+def test_edit_level_without_a_draft_refuses(tmp_path):
+    store = _identity_done(tmp_path)
+    with pytest.raises(ValueError):
+        edit_level(store, 2, "Nothing drafted yet.")
