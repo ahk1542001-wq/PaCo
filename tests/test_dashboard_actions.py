@@ -92,6 +92,60 @@ def test_edit_rechecks_the_draft(tmp_path):
         server.shutdown()
 
 
+def test_run_action_in_meta_mode_hands_the_pipeline_a_real_judge(tmp_path, monkeypatch):
+    """Regression guard for the 2026-11-05 demo incident.
+
+    The dashboard and the weekly cycle construct their model
+    clients identically; the mock drafts that night came from a
+    dashboard server launched WITHOUT MODEL_MODE / MODEL_API_KEY
+    in its environment, so every factory fell back to mock. With
+    meta mode in the environment (what scripts/run_dashboard_live.py
+    supplies), the run action must hand the pipeline the dedicated
+    Wonder judge: a real MetaModelClient, not None and not a mock.
+    The pipeline entry point is captured, not run, and httpx is
+    blocked, so nothing leaves the machine.
+    """
+    import httpx
+
+    from pageops import pipeline
+    from pageops.model_client import MODEL_WONDER, MetaImageClient, MetaModelClient
+
+    monkeypatch.setenv("MODEL_MODE", "meta")
+    monkeypatch.setenv("MODEL_API_KEY", "test-key-not-real")
+    monkeypatch.setenv("PAGEOPS_DATA_DIR", str(tmp_path))
+
+    def _no_network(*args, **kwargs):
+        raise AssertionError("network call attempted during run-action wiring test")
+
+    monkeypatch.setattr(httpx, "post", _no_network)
+
+    captured = {}
+
+    def fake_run_brief(store, client, item_id, **kwargs):
+        captured["client"] = client
+        captured["item_id"] = item_id
+        captured.update(kwargs)
+
+    monkeypatch.setattr(pipeline, "run_brief", fake_run_brief)
+
+    store = Store(tmp_path)
+    brief = store.add_plan_row({"status": "brief_received", "brief": "Grow leads"})
+    server, base = _start(store)
+    try:
+        assert _post(base + "/action", {"id": brief["id"], "action": "run"}) == 200
+    finally:
+        server.shutdown()
+
+    assert captured["item_id"] == brief["id"]
+    judge = captured["judge"]
+    assert isinstance(judge, MetaModelClient)  # a real judge, not None / mock
+    assert judge is not captured["client"]  # dedicated pass, its own instance
+    assert judge.verdict_model == MODEL_WONDER
+    assert isinstance(captured["client"], MetaModelClient)
+    assert isinstance(captured["image_client"], MetaImageClient)
+    assert captured["trends_fetcher"] is not None  # live mode researches first
+
+
 def test_schedule_without_approval_is_rejected(tmp_path):
     store = Store(tmp_path)
     row = store.add_plan_row(
