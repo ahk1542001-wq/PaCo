@@ -146,6 +146,67 @@ def test_run_action_in_meta_mode_hands_the_pipeline_a_real_judge(tmp_path, monke
     assert captured["trends_fetcher"] is not None  # live mode researches first
 
 
+def test_standing_brief_panel_saves_the_file(tmp_path):
+    from pageops.dashboard import render_board
+
+    store = Store(tmp_path)
+    server, base = _start(store)
+    try:
+        assert _post(base + "/standing-brief", {"brief": "A varied week for FYF AI"}) == 200
+        brief_path = tmp_path / "standing-brief.txt"
+        assert brief_path.read_text(encoding="utf-8") == "A varied week for FYF AI"
+        # The panel renders what is on disk: the owner edits the
+        # heartbeat's real input, not a copy of it.
+        assert "A varied week for FYF AI" in render_board(store)
+        # Saving again overwrites (the file now exists).
+        assert _post(base + "/standing-brief", {"brief": "Second version"}) == 200
+        assert brief_path.read_text(encoding="utf-8") == "Second version"
+    finally:
+        server.shutdown()
+
+
+def test_schedule_with_a_chosen_datetime_stores_it(tmp_path):
+    store = Store(tmp_path)
+    row = store.add_plan_row(
+        {"platform": "facebook", "topic": "Post", "status": "awaiting_approval"}
+    )
+    server, base = _start(store)
+    try:
+        assert _post(base + "/action", {"id": row["id"], "action": "approve"}) == 200
+        assert _post(
+            base + "/action",
+            {
+                "id": row["id"],
+                "action": "schedule",
+                "scheduled_for": "2026-11-09T19:00",
+            },
+        ) == 200
+        final = store.read_dataset("plan")[0]
+        assert final["status"] == "scheduled"
+        assert final["scheduled_for"] == "2026-11-09T19:00"
+    finally:
+        server.shutdown()
+
+
+def test_brand_level_edit_via_dashboard_keeps_drafted(tmp_path):
+    from pageops.brand_builder import draft_level, level_statuses
+    from pageops.model_client import MockClient
+
+    store = Store(tmp_path)  # the seeded FYF identity stands approved
+    draft_level(store, 2, MockClient(), "brief")
+    server, base = _start(store)
+    try:
+        assert _post(
+            base + "/brand-level",
+            {"level": "2", "action": "edit", "content": "Owner-edited audience."},
+        ) == 200
+        assert level_statuses(store)[2] == "drafted"
+        row = [r for r in store.read_dataset("brand_build") if r["level"] == "2"][0]
+        assert row["content"] == "Owner-edited audience."
+    finally:
+        server.shutdown()
+
+
 def test_schedule_without_approval_is_rejected(tmp_path):
     store = Store(tmp_path)
     row = store.add_plan_row(

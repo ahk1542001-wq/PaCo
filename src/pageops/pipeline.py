@@ -59,6 +59,7 @@ BRAND_KEYS = (
     "postiz_base_url", "postiz_api_key",
     "fb_page_id", "fb_access_token",
     "heartbeat_weekday", "heartbeat_time", "heartbeat_timezone",
+    "rss_feeds",
 )
 
 
@@ -105,9 +106,15 @@ def fetch_trends(
     try:
         # Brief-aware fetchers (the research backend) search for
         # what the brief asks about; plain feed fetchers ignore it.
-        result = fetcher(feeds_file, brief=brief)
+        # Store-aware fetchers resolve the brand's own feed list
+        # (rss_feeds) and its feeds.txt; older doubles take fewer
+        # arguments, so narrow the call until one fits.
+        result = fetcher(feeds_file, brief=brief, store=store)
     except TypeError:
-        result = fetcher(feeds_file)
+        try:
+            result = fetcher(feeds_file, brief=brief)
+        except TypeError:
+            result = fetcher(feeds_file)
     source = None
     if isinstance(result, dict):
         # A research bundle carries its provenance: which backend

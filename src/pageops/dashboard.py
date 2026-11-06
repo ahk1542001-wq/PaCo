@@ -272,6 +272,8 @@ def _actions(row: dict[str, str]) -> str:
         return (
             '<form method="post" action="/action" class="actions">'
             f'<input type="hidden" name="id" value="{item_id}">'
+            '<input type="datetime-local" name="scheduled_for" '
+            'aria-label="Schedule for (optional)">'
             '<button class="btn-secondary" name="action" value="schedule" type="submit">Schedule (dry-run)</button>'
             "</form>"
         )
@@ -629,6 +631,11 @@ def render_board(store: Store) -> str:
             )
         if status == "drafted":
             actions += (
+                '<form method="post" action="/brand-level" class="edit">'
+                f'<input type="hidden" name="level" value="{lvl}">'
+                '<input type="hidden" name="action" value="edit">'
+                f'<textarea name="content" rows="4">{html.escape(content)}</textarea>'
+                '<button class="btn-ghost" type="submit">Save edit</button></form>'
                 '<form method="post" action="/brand-level">'
                 f'<input type="hidden" name="level" value="{lvl}">'
                 '<input type="hidden" name="action" value="approve">'
@@ -682,6 +689,23 @@ def render_board(store: Store) -> str:
     else:
         heartbeat_panel += "<p>No unread notifications.</p>"
     heartbeat_panel += "</section>"
+
+    # The standing brief the heartbeat prepares each cycle from:
+    # read from the data dir's standing-brief.txt, editable here
+    # so the owner never has to touch the file by hand.
+    brief_file = store.data_dir / "standing-brief.txt"
+    try:
+        standing_brief_text = brief_file.read_text(encoding="utf-8")
+    except OSError:
+        standing_brief_text = ""
+    standing_brief_panel = (
+        '<section class="panel" id="standing-brief"><h2>Standing brief</h2>'
+        '<form method="post" action="/standing-brief">'
+        f'<textarea name="brief" rows="4">{html.escape(standing_brief_text)}</textarea>'
+        '<button class="btn-secondary" type="submit">Save standing brief</button></form>'
+        "<p>The weekly heartbeat prepares each cycle from this brief "
+        "and stops at your approval gate.</p></section>"
+    )
 
     brief_form = (
         '<section class="panel" id="new-brief"><h2>New brief</h2>'
@@ -750,6 +774,7 @@ def render_board(store: Store) -> str:
         ]),
         ("System", [
             ("Heartbeat", "#heartbeat", False, ""),
+            ("Standing brief", "#standing-brief", False, ""),
             ("Notifications", "#heartbeat", False, unread_dot),
         ]),
     ]
@@ -795,7 +820,7 @@ def render_board(store: Store) -> str:
         f"{report_panel}{visibility_panel}{content_panel}{audience_panel}"
         f"{variants_panel}{brand_builder_panel}{research_panel}"
         '</div><div class="lower-rail">'
-        f"{brand_panel}{metrics_panel}{heartbeat_panel}"
+        f"{brand_panel}{metrics_panel}{heartbeat_panel}{standing_brief_panel}"
         "</div></div>"
     )
     return (
@@ -884,20 +909,25 @@ def make_handler(store: Store):
                     from .research import fetch_research
 
                     brief = form.get("brief", "")
-                    bundle = fetch_research(brief=brief)
+                    bundle = fetch_research(brief=brief, store=store)
                     run_business_research(
                         store, get_client(), brief, bundle.get("items", [])
                     )
                 elif self.path == "/brand-level":
-                    from .brand_builder import approve_level, draft_level
+                    from .brand_builder import approve_level, draft_level, edit_level
 
                     level = int(form.get("level", "0") or 0)
                     if form.get("action") == "draft":
                         from .model_client import get_client
 
                         draft_level(store, level, get_client(), form.get("brief", ""))
+                    elif form.get("action") == "edit":
+                        edit_level(store, level, form.get("content", ""))
                     elif form.get("action") == "approve":
                         approve_level(store, level)
+                elif self.path == "/standing-brief":
+                    brief_path = store.data_dir / "standing-brief.txt"
+                    brief_path.write_text(form.get("brief", ""), encoding="utf-8")
                 elif self.path == "/variants":
                     from .model_client import get_client
                     from .variants import generate_variants
@@ -979,6 +1009,15 @@ def make_handler(store: Store):
                     elif action == "schedule":
                         from .pipeline import schedule_approved
 
+                        scheduled_for = form.get("scheduled_for", "").strip()
+                        if scheduled_for:
+                            # The owner picked the moment on the
+                            # card: store it on the row first, and
+                            # the Postiz client sends at that time
+                            # instead of now.
+                            store.update_row(
+                                "plan", item_id, {"scheduled_for": scheduled_for}
+                            )
                         schedule_approved(store, item_id)
                     elif action == "link":
                         from .pipeline import link_post

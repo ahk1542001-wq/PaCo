@@ -77,6 +77,12 @@ def test_only_approved_cards_can_schedule(tmp_path):
     assert board.count('value="schedule"') == 1
 
 
+def test_approved_card_offers_a_schedule_datetime(tmp_path):
+    board = _board_with(tmp_path, approved={})
+    assert 'type="datetime-local"' in board
+    assert 'name="scheduled_for"' in board
+
+
 def test_brief_card_offers_run_only(tmp_path):
     board = _board_with(tmp_path, brief_received={"brief": "Goal: grow"})
     assert 'value="run"' in board

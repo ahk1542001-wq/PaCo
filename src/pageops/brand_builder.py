@@ -87,6 +87,20 @@ def draft_level(store: Store, level: int, client, brief: str) -> dict:
     return _upsert(store, level, "drafted", content)
 
 
+def edit_level(store: Store, level: int, content: str) -> dict:
+    """Save the owner's edit of a drafted level.
+
+    The level stays drafted: editing is the owner improving the
+    draft before the approval click, never a silent approval.
+    """
+    if level not in LEVELS:
+        raise ValueError(f"Unknown brand level: {level}")
+    row = _rows(store).get(level)
+    if not row or row.get("status") != "drafted":
+        raise ValueError(f"Level {level} has no draft to edit.")
+    return _upsert(store, level, "drafted", content)
+
+
 def approve_level(store: Store, level: int) -> dict:
     """Approve a drafted level and write it into the brand data."""
     if level not in LEVELS:
