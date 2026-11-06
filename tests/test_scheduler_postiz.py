@@ -92,6 +92,32 @@ def test_http_failure_raises_and_stays_approved(tmp_path):
     assert store.read_dataset("plan")[0]["status"] == "approved"
 
 
+def test_make_postiz_client_falls_back_to_brand_connection_data(tmp_path):
+    # Connect day pastes the instance URL and API key into the
+    # brand panel; with no env settings the client must go live
+    # from the brand data alone (env-first, brand fallback, the
+    # fb_insights.resolve_fb_config pattern).
+    store = Store(tmp_path)
+    update_brand_voice(store, "postiz_base_url", "https://postiz.example.com/api")
+    update_brand_voice(store, "postiz_api_key", "BRANDKEY")
+    client = make_postiz_client(store, Settings())
+    assert client.dry_run is False
+    assert client.base_url == "https://postiz.example.com/api"
+    assert client.api_key == "BRANDKEY"
+
+
+def test_make_postiz_client_settings_win_over_brand_data(tmp_path):
+    store = Store(tmp_path)
+    update_brand_voice(store, "postiz_base_url", "https://brand.example.com")
+    update_brand_voice(store, "postiz_api_key", "BRANDKEY")
+    client = make_postiz_client(
+        store,
+        Settings(postiz_api_key="ENVKEY", postiz_base_url="https://env.example.com"),
+    )
+    assert client.api_key == "ENVKEY"
+    assert client.base_url == "https://env.example.com"
+
+
 def test_make_postiz_client_reads_connection_data_and_toggles(tmp_path):
     store = Store(tmp_path)
     update_brand_voice(store, "postiz_integration_facebook", "int-fb")
