@@ -27,7 +27,7 @@ DATASETS: dict[str, list[str]] = {
     ],
     "research": ["id", "kind", "claim", "source", "evidence", "recorded"],
     "brand_build": ["id", "level", "status", "content", "updated"],
-    "variants": ["id", "plan_id", "platform", "text", "check_status"],
+    "variants": ["id", "plan_id", "platform", "text", "check_status", "media"],
     "metrics": ["date", "platform", "post_id", "reach", "engagement", "clicks", "notes"],
     "notifications": ["id", "created", "kind", "message", "read"],
     "chat_log": [

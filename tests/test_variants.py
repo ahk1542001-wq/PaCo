@@ -156,3 +156,64 @@ def test_untrimmable_x_variant_keeps_brand_name_and_fails_length_only(tmp_path):
     assert "FYF AI" in x_row["text"]
     x_failures = [f for f in result["failures"] if f[1] == "x"]
     assert x_failures and x_failures[0][2] == ["length_limit"]
+
+
+# --- Media mapping: the master's visual rides with each variant --
+
+
+def _store_with_visual(tmp_path, visual="visuals/poster-1.png"):
+    store = _store(tmp_path)
+    master = store.read_dataset("plan")[0]
+    store.update_row("plan", master["id"], {"visual": visual})
+    return store
+
+
+def test_variant_rows_carry_the_masters_visual(tmp_path):
+    store = _store_with_visual(tmp_path)
+    generate_variants(store, MockClient())
+    rows = store.read_dataset("variants")
+    assert rows
+    assert all(r["media"] == "visuals/poster-1.png" for r in rows)
+
+
+def test_variant_media_empty_when_master_has_no_visual(tmp_path):
+    store = _store(tmp_path)
+    generate_variants(store, MockClient())
+    rows = store.read_dataset("variants")
+    assert rows
+    assert all(r["media"] == "" for r in rows)
+
+
+def test_variant_refresh_updates_media(tmp_path):
+    store = _store_with_visual(tmp_path)
+    generate_variants(store, MockClient())
+    master = store.read_dataset("plan")[0]
+    store.update_row("plan", master["id"], {"visual": "visuals/poster-2.png"})
+    result = generate_variants(store, MockClient())
+    assert result["updated"] == 4
+    rows = store.read_dataset("variants")
+    assert all(r["media"] == "visuals/poster-2.png" for r in rows)
+
+
+def test_variants_panel_renders_media_thumbnail_and_reference(tmp_path):
+    from pageops.dashboard import render_board
+
+    store = _store_with_visual(tmp_path)
+    visuals = tmp_path / "visuals"
+    visuals.mkdir(exist_ok=True)
+    (visuals / "poster-1.png").write_bytes(b"\x89PNG")
+    generate_variants(store, MockClient())
+    store.append_row(
+        "variants",
+        {
+            "id": "99",
+            "plan_id": "1",
+            "platform": "x",
+            "text": "A variant whose media is a plain reference",
+            "check_status": "pass",
+            "media": "notes/ref.txt",
+        },
+    )
+    board = render_board(store)
+    assert 'src="/visual/poster-1.png"' in board
+    assert "[media: notes/ref.txt]" in board

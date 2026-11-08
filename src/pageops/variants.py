@@ -43,12 +43,16 @@ def target_platforms(store: Store, item: dict) -> list[str]:
     return [p for p in targets if p != own]
 
 
-def _upsert_variant(store: Store, plan_id: str, platform: str, text: str, status: str) -> str:
+def _upsert_variant(
+    store: Store, plan_id: str, platform: str, text: str, status: str, media: str = ""
+) -> str:
     rows = store.read_dataset("variants")
     for row in rows:
         if row.get("plan_id") == str(plan_id) and row.get("platform") == platform:
             store.update_row(
-                "variants", row["id"], {"text": text, "check_status": status}
+                "variants",
+                row["id"],
+                {"text": text, "check_status": status, "media": media},
             )
             return "updated"
     store.append_row(
@@ -59,6 +63,7 @@ def _upsert_variant(store: Store, plan_id: str, platform: str, text: str, status
             "platform": platform,
             "text": text,
             "check_status": status,
+            "media": media,
         },
     )
     return "created"
@@ -102,7 +107,14 @@ def generate_variants(store: Store, client) -> dict:
                     )
                     check = check_draft(text, platform, brand)
             status = "pass" if check.passed else "fail"
-            outcome = _upsert_variant(store, item["id"], platform, text, status)
+            # The master's visual reference rides along, so a
+            # variant is never text without its picture. A master
+            # with no visual maps to empty media -- recorded as
+            # empty, never invented.
+            media = (item.get("visual") or "").strip()
+            outcome = _upsert_variant(
+                store, item["id"], platform, text, status, media=media
+            )
             result[outcome] += 1
             if not check.passed:
                 result["failures"].append(
