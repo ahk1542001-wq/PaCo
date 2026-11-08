@@ -95,3 +95,64 @@ def test_length_is_trimmed_even_with_other_failures(tmp_path):
     x_failures = [f for f in result["failures"] if f[1] == "x"]
     assert x_failures and "required_hashtag" in x_failures[0][2]
     assert "length_limit" not in x_failures[0][2]
+
+
+class _StubClient:
+    """Adapt returns one crafted text for every platform; no
+    humanise attribute, so the humaniser passes text through."""
+
+    def __init__(self, text):
+        self._text = text
+
+    def adapt_variant(self, text, brand_voice, platform):
+        return self._text
+
+
+def _x_only_store(tmp_path, draft=MASTER):
+    store = _store(tmp_path, draft=draft)
+    update_brand_voice(store, "postiz_integration_x", "int-x")
+    update_brand_voice(store, "min_caption_chars", "500")
+    return store
+
+
+def test_trim_keeps_brand_sentence_and_both_rules_pass(tmp_path):
+    # Genuinely trimmable: hook + brand sentence + CTA/hashtag
+    # sentence (all protected) fit the X cap once the droppable
+    # filler sentences are dropped.
+    crafted = (
+        "က" * 60 + "ပါ။ "
+        + "FYF AI " + "ခ" * 55 + "ပါ။ "
+        + "ဂ" * 70 + "ပါ။ "
+        + "ဂ" * 70 + "ပါ။ "
+        + "ဂ" * 70 + "ပါ။ "
+        + "message us " + "ဃ" * 30 + "ပါ။ #FYFAI #AIAutomation #SME"
+    )
+    assert len(crafted) > PLATFORM_LIMITS["x"]
+    store = _x_only_store(tmp_path)
+    result = generate_variants(store, _StubClient(crafted))
+    x_row = [r for r in store.read_dataset("variants") if r["platform"] == "x"][0]
+    assert x_row["check_status"] == "pass", result["failures"]
+    assert len(x_row["text"]) <= PLATFORM_LIMITS["x"]
+    assert "FYF AI" in x_row["text"]
+    assert "#FYFAI" in x_row["text"]
+    assert [f for f in result["failures"] if f[1] == "x"] == []
+
+
+def test_untrimmable_x_variant_keeps_brand_name_and_fails_length_only(tmp_path):
+    # The archived item-4 shape: the protected sentences alone
+    # exceed the X cap. The trim must now keep the brand-name
+    # sentence (before this PR it could be dropped, failing
+    # brand_named as well); only length_limit may fail.
+    crafted = (
+        "က" * 100 + "ပါ။ "
+        + "FYF AI " + "ခ" * 85 + "ပါ။ "
+        + "ဂ" * 60 + "ပါ။ "
+        + "message us " + "ဃ" * 55 + "ပါ။ #FYFAI #AIAutomation #SME"
+    )
+    store = _x_only_store(tmp_path)
+    result = generate_variants(store, _StubClient(crafted))
+    x_row = [r for r in store.read_dataset("variants") if r["platform"] == "x"][0]
+    assert x_row["check_status"] == "fail"
+    assert "FYF AI" in x_row["text"]
+    x_failures = [f for f in result["failures"] if f[1] == "x"]
+    assert x_failures and x_failures[0][2] == ["length_limit"]

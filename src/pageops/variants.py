@@ -86,7 +86,20 @@ def generate_variants(store: Store, client) -> dict:
                 failing = [r.rule for r in check.results if not r.passed]
                 if "length_limit" in failing:
                     cap = PLATFORM_LIMITS[platform]
-                    text = trim_to_cap(text, cap, protected_markers=markers)
+                    # The trim also protects the brand name and the
+                    # required hashtags as whole tokens: dropping the
+                    # sentence that carries the brand name would fix
+                    # the length and break brand_named instead (the
+                    # archived item-4 X shape).
+                    text = trim_to_cap(
+                        text,
+                        cap,
+                        protected_markers=markers,
+                        protected_tokens=[
+                            brand.get("brand_name") or "",
+                            *(brand.get("required_hashtags") or []),
+                        ],
+                    )
                     check = check_draft(text, platform, brand)
             status = "pass" if check.passed else "fail"
             outcome = _upsert_variant(store, item["id"], platform, text, status)

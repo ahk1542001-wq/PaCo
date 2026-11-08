@@ -51,6 +51,7 @@ BRAND_KEYS = (
     "character_sheet", "brand_colors", "brand_fonts", "logo_usage",
     "positioning", "journey",
     "template_sizes", "proof_baseline", "min_caption_chars", "voice_samples",
+    "allowed_scripts",
     "postiz_integration_facebook", "postiz_integration_instagram",
     "postiz_integration_tiktok", "postiz_integration_threads",
     "postiz_integration_x", "postiz_enabled_facebook",
@@ -288,7 +289,10 @@ def draft_and_check(
                 # few percent per pass): finish the job in code by
                 # dropping whole middle sentences, then let the
                 # checks judge the result like any other draft.
-                cut = trim_to_cap(current, cap, brand.get("cta_markers") or [])
+                cut = trim_to_cap(
+                        current, cap, brand.get("cta_markers") or [],
+                        protected_tokens=[brand.get("brand_name") or "", *(brand.get("required_hashtags") or [])],
+                    )
                 if len(cut) < len(current):
                     current, trimmed = cut, True
             if repair_error:
@@ -303,7 +307,10 @@ def draft_and_check(
                     # The humaniser re-expanded it: one last
                     # deterministic trim, adopted only if it lands
                     # under the cap.
-                    cut = trim_to_cap(current, cap, brand.get("cta_markers") or [])
+                    cut = trim_to_cap(
+                        current, cap, brand.get("cta_markers") or [],
+                        protected_tokens=[brand.get("brand_name") or "", *(brand.get("required_hashtags") or [])],
+                    )
                     if len(cut) <= cap:
                         current, trimmed = cut, True
                 repair_result = check_draft(
