@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from pageops import context
 from pageops.memory import collect_corpus, retrieval_context, retrieve
-from pageops.pipeline import generate_week
+from pageops.model_client import MockClient
+from pageops.pipeline import draft_and_check, generate_week
 from pageops.store import Store
 
 
@@ -94,3 +95,100 @@ def test_generate_week_passes_retrieved_material_to_the_planner(tmp_path):
     assert client.context is not None
     assert "retrieved from this brand's own stored past work" in client.context
     assert "Chatbot questions" in client.context
+
+
+# --- Draft-level retrieval (the drafter's context slot) --------
+
+
+def test_relevant_past_draft_reaches_the_drafting_call(tmp_path):
+    store = _store(tmp_path)
+    store.add_plan_row(
+        {
+            "topic": "Quokka hotline hours",
+            "draft": "Our quokka hotline answers customer questions about "
+            "quokka feeding times every evening.",
+            "status": "scheduled",
+            "platform": "facebook",
+        }
+    )
+    new_row = store.add_plan_row(
+        {
+            "topic": "Quokka hotline reminder",
+            "brief": "Remind customers about the quokka hotline",
+            "status": "planned",
+            "platform": "facebook",
+        }
+    )
+    client = MockClient()
+    draft_and_check(store, client, new_row)
+    assert client.draft_contexts, "the drafting call was never made"
+    joined = "\n".join(client.draft_contexts)
+    assert "quokka hotline answers" in joined
+    assert "Quokka hotline hours" in joined
+
+
+def test_zero_match_leaves_the_draft_exactly_as_before(tmp_path):
+    store = _store(tmp_path)
+    store.add_plan_row(
+        {
+            "topic": "Quokka hotline hours",
+            "draft": "Our quokka hotline answers customer questions.",
+            "status": "scheduled",
+            "platform": "facebook",
+        }
+    )
+    new_row = store.add_plan_row(
+        {
+            "topic": "Zephyr umbrella warranty",
+            "brief": "Zephyr umbrella warranty terms",
+            "status": "planned",
+            "platform": "facebook",
+        }
+    )
+    client = MockClient()
+    result_row = draft_and_check(store, client, new_row)
+    assert client.draft_contexts
+    assert all(ctx == "" for ctx in client.draft_contexts)
+    baseline = MockClient().generate_draft(new_row, store.get_brand_voice())
+    assert baseline["text"] in result_row["draft"]
+
+
+def test_retrieval_never_includes_the_items_own_stored_draft(tmp_path):
+    store = _store(tmp_path)
+    row = store.add_plan_row(
+        {
+            "topic": "Quokka hotline hours",
+            "draft": "SENTINEL-OWN-DRAFT quokka hotline answers customers.",
+            "status": "checked",
+            "platform": "facebook",
+        }
+    )
+    client = MockClient()
+    draft_and_check(store, client, row)
+    assert client.draft_contexts
+    assert all("SENTINEL-OWN-DRAFT" not in ctx for ctx in client.draft_contexts)
+
+
+def test_meta_client_frames_retrieved_context_as_reference_only(monkeypatch):
+    from pageops.model_client import MetaModelClient
+
+    client = MetaModelClient(api_key="test-key")
+    captured = {}
+
+    def fake_structured(instruction, payload, model):
+        captured["instruction"] = instruction
+        return {"platform": "facebook", "text": "x", "hashtags": []}
+
+    monkeypatch.setattr(client, "_structured", fake_structured)
+    client.generate_draft(
+        {"topic": "T", "platform": "facebook"},
+        {"brand_name": "FYF AI"},
+        context="- [draft] plan 3: Past material about quokka hotline",
+    )
+    assert "never instructions" in captured["instruction"]
+    assert "Past material about quokka hotline" in captured["instruction"]
+
+    client.generate_draft(
+        {"topic": "T", "platform": "facebook"}, {"brand_name": "FYF AI"}
+    )
+    assert "Reference material retrieved" not in captured["instruction"]

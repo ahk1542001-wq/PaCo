@@ -223,6 +223,30 @@ def generate_week(
     return rows
 
 
+def _call_generate_draft(client, item: dict, brand: dict, context: str) -> dict:
+    """Call the client's drafting method with retrieval context.
+
+    The drafting protocol gained an optional context slot (the
+    brand's retrieved past work as reference material). Clients
+    that accept it (both real clients) receive it; a client with
+    the older two-argument signature -- test doubles, script-side
+    wrappers -- is called exactly as before, so widening the
+    protocol breaks nothing that already worked.
+    """
+    import inspect
+
+    try:
+        params = inspect.signature(client.generate_draft).parameters
+        accepts = "context" in params or any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
+        )
+    except (TypeError, ValueError):
+        accepts = False
+    if accepts:
+        return client.generate_draft(item, brand, context=context)
+    return client.generate_draft(item, brand)
+
+
 def _full_text(draft: dict) -> str:
     text = draft.get("text", "")
     tags = [t for t in draft.get("hashtags", []) if t and t not in text]
@@ -243,13 +267,27 @@ def draft_and_check(
     """
     brand = store.get_brand_voice()
     item = dict(row)
-    draft = client.generate_draft(item, brand)
+    # Draft-level retrieval: the brand's own past work most
+    # relevant to this item's topic + brief rides into the
+    # drafting call as reference material (the planner has had
+    # this since PR #52; the drafter gets it now). The item's own
+    # plan row is excluded by ref, so a re-draft never retrieves
+    # its own stored draft. Zero matches -> empty context -> the
+    # drafting call is exactly what it was before.
+    from .memory import retrieval_context
+
+    query = " ".join(
+        part for part in (item.get("topic", ""), item.get("brief", "")) if part
+    )
+    exclude = {f"plan {item['id']}:"} if item.get("id") else None
+    draft_context = retrieval_context(store, query, exclude_refs=exclude)
+    draft = _call_generate_draft(client, item, brand, draft_context)
     text = _full_text(draft)
     text, humanize_error = humanize_text(client, text, brand)
     result = check_draft(text, item.get("platform", ""), brand)
     if not result.passed:
         item["revision_feedback"] = result.summary()
-        draft = client.generate_draft(item, brand)
+        draft = _call_generate_draft(client, item, brand, draft_context)
         text = _full_text(draft)
         text, revision_error = humanize_text(client, text, brand)
         humanize_error = humanize_error or revision_error
