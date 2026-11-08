@@ -26,6 +26,17 @@ and the same proposal + confirm gate as everything else here:
     the owner as a proposal card whose confirm is the existing
     approve_level path. Nothing enters brand data before its
     own confirm.
+  - The Audience (2) and Positioning (3) levels - the two where
+    a wrong call poisons everything downstream - arrive as a
+    pick between 2-3 genuinely distinct options first
+    (draft_brand_level_options): the owner answers with a
+    number, the picked text is recorded as the level's draft
+    (record_draft) and only then flows into the same proposal
+    card. Picking is a selection, not a brand write, so it has
+    no confirm gate of its own. When the model cannot offer a
+    real choice (fewer than two usable options), the level
+    falls back to the single-draft path and the interview never
+    blocks. Levels 4-5 keep the single-draft flow.
   - The pasted own-voice posts are proposed as voice_samples
     through the same set_brand proposal machinery, and the
     closing summary card ("Your target is X. Your style is Y.
@@ -45,7 +56,7 @@ import json
 import re
 from datetime import datetime, timezone
 
-from .brand_builder import LEVELS, draft_level, level_statuses
+from .brand_builder import LEVELS, draft_level, level_statuses, record_draft
 from .chat import _append, _propose, pending_proposal
 from .context import load_last_audience_analysis, load_last_content_analysis
 from .store import Store
@@ -115,6 +126,26 @@ TONE_QUESTION = (
 )
 
 _MY_DIGITS = str.maketrans("၁၂၃၄၅၆၇၈၉၀", "1234567890")
+
+# The review phase offers these levels as a pick between
+# options before the single draft is proposed: Audience and
+# Positioning, the two framing decisions everything else
+# inherits. Levels 4-5 keep the single-draft flow.
+OPTION_LEVELS = (2, 3)
+
+# Burmese ordinals a pick answer can use, longest first so a
+# compound form wins over its own prefix (ပထမဆုံး before ပထမ).
+_PICK_ORDINALS = (
+    ("ပထမဆုံး", 1),
+    ("အရင်ဆုံး", 1),
+    ("ပထမ", 1),
+    ("ဒုတိယ", 2),
+    ("တတိယ", 3),
+    ("စတုတ္ထ", 4),
+    ("ပဉ္စမ", 5),
+    ("ဆဋ္ဌမ", 6),
+    ("သတ္တမ", 7),
+)
 
 _EXIT_WORDS = {"ရပ်မယ်", "ရပ်ထားမယ်"}
 _EXIT_WORDS_EN = {"cancel", "pause", "stop"}
@@ -271,6 +302,27 @@ def _tone_label(key: str) -> str:
     return key
 
 
+def parse_pick(message: str, count: int) -> int | None:
+    """A level-options pick: a number (Latin or Myanmar digits)
+    or a Burmese ordinal naming one of the offered options -
+    the tone step's parsing discipline. Returns the 1-based
+    position, or None (out of range or not a pick at all), in
+    which case the step simply asks again."""
+    text = (message or "").strip()
+    translated = text.translate(_MY_DIGITS)
+    if translated.isdigit():
+        number = int(translated)
+        return number if 1 <= number <= count else None
+    for word, position in _PICK_ORDINALS:
+        if word in text:
+            return position if position <= count else None
+    bare = re.search(r"(?<![0-9])([1-9])(?![0-9])", translated)
+    if bare:
+        number = int(bare.group(1))
+        return number if number <= count else None
+    return None
+
+
 def _split_examples(text: str) -> list[str]:
     parts = [p.strip() for p in re.split(r"\n\s*\n", (text or "").strip()) if p.strip()]
     return parts or [(text or "").strip()]
@@ -419,6 +471,8 @@ def handle_active_message(store: Store, client, session: dict, message: str) -> 
     answers = _answers(session)
 
     if step in ("review", "closing"):
+        if answers.get("_options"):
+            return _handle_pick(store, client, session, answers, text)
         if pending_proposal(store) is not None:
             return _say(
                 store,
@@ -517,16 +571,104 @@ def _begin_review(store: Store, client, session: dict, answers: dict) -> dict:
 # -- Review phase: drafting, voice samples, closing card -----------------------
 
 
+def _options_text(session: dict, level: int, options: list) -> str:
+    """The pick step's rendering: how many options were offered,
+    each one numbered in full, and how to answer. The message
+    lands in the transcript, so what was offered - and how many
+    - stays on the record."""
+    name = LEVELS[level]["name"]
+    label = "" if _answers(session).get("_evidence") else f" ({ANSWERS_ONLY_LABEL})"
+    lines = [
+        f"Brand အဆင့် {level} ({name}) အတွက် ရွေးစရာ {len(options)} ခု "
+        f"ပြင်ထားပါတယ်{label} — တစ်ခုချင်းစီ ရှုထောင့် မတူပါဘူး။ "
+        "ကြိုက်တဲ့ တစ်ခုကို နံပါတ်နဲ့ ရွေးပါ။ ရွေးပြီးမှ "
+        "အတည်ပြုချက် card ထပ်ပြပါမယ်။"
+    ]
+    lines += [f"{i}. {text}" for i, text in enumerate(options, 1)]
+    lines.append(f"နံပါတ် (1 မှ {len(options)} အထိ) နဲ့ ပြန်ဖြေပါ။")
+    return "\n".join(lines)
+
+
+def _level_options(store: Store, client, session: dict, level: int) -> list | None:
+    """The distinct options for one level, cleaned - or None
+    when the client cannot offer a real choice (the call failed,
+    or fewer than two usable options came back), in which case
+    the caller takes the single-draft path and the interview
+    never blocks on a pick that is not a choice."""
+    brand = store.get_brand_voice()
+    try:
+        raw = client.draft_brand_level_options(
+            LEVELS[level]["name"], _drafting_brief(store, session), brand, count=3
+        )
+    except Exception:
+        return None
+    options: list[str] = []
+    for entry in raw or []:
+        text = str(entry or "").strip()
+        if text and text not in options:
+            options.append(text)
+    return options[:3] if len(options) >= 2 else None
+
+
+def _handle_pick(store: Store, client, session: dict, answers: dict, text: str) -> dict:
+    """One message while level options wait: it IS the pick.
+    Picking is a selection, not a brand write - the chosen text
+    is recorded as the level's draft and advance then proposes
+    it on the ordinary confirm card. Anything that is not a
+    valid pick re-renders the options and nothing moves."""
+    pick = answers.get("_options") or {}
+    options = pick.get("options") or []
+    level = int(pick.get("level") or 0)
+    if level not in LEVELS or not options:
+        answers.pop("_options", None)
+        _store_answers(store, session, answers)
+        return advance(store, client, session)
+    choice = parse_pick(text, len(options))
+    if choice is None:
+        return _say(store, "ဘယ်တစ်ခုလဲ မရှင်းလိုက်ပါ —\n" + _options_text(session, level, options))
+    chosen = options[choice - 1]
+    del answers["_options"]
+    _store_answers(store, session, answers)
+    try:
+        record_draft(store, level, chosen)
+    except ValueError:
+        # The board moved under the pick (the level's gate is no
+        # longer open): the stale offer is already dropped, so
+        # let advance re-derive the review as the levels stand.
+        return advance(store, client, session)
+    _say(
+        store,
+        f"ရွေးစရာ {choice} ကို ရွေးထားပါတယ် — အဲ့ဒီ စာသားကို "
+        f"Brand အဆင့် {level} ({LEVELS[level]['name']}) မူကြမ်းအဖြစ် "
+        "သတ်မှတ်ပြီး အတည်ပြုချက် card ပြပါမယ်။",
+    )
+    return advance(store, client, session)
+
+
 def advance(store: Store, client, session: dict) -> dict:
     """Move the review phase one visible step: propose approval
-    of the first unapproved level (drafting it first if needed),
-    then the voice samples, then the closing card. Idempotent -
-    a level already drafted is re-proposed, never re-drafted."""
+    of the first unapproved level (drafting it first if needed -
+    Audience and Positioning are offered as an options pick
+    before their draft is proposed), then the voice samples,
+    then the closing card. Idempotent - options already on the
+    table are re-rendered, never regenerated, and a level
+    already drafted is re-proposed, never re-drafted."""
     if pending_proposal(store) is not None:
         return _say(
             store,
             "အဆိုပြုချက် တစ်ခု အတည်ပြုရန် စောင့်နေပါတယ် — card မှာ "
             "အတည်ပြု / ဖျက် နှိပ်ပါ။",
+        )
+    answers = _answers(session)
+    pending_options = answers.get("_options") or {}
+    if pending_options.get("options") and int(pending_options.get("level") or 0) in LEVELS:
+        return _say(
+            store,
+            _options_text(
+                session,
+                int(pending_options.get("level") or 0),
+                pending_options["options"],
+            ),
         )
     statuses = level_statuses(store)
     if statuses[1] != "approved":
@@ -545,6 +687,12 @@ def advance(store: Store, client, session: dict) -> dict:
             if client is None:
                 _save(store, session, status="paused")
                 return _say(store, PAUSED_TEXT)
+            if level in OPTION_LEVELS:
+                options = _level_options(store, client, session, level)
+                if options is not None:
+                    answers["_options"] = {"level": level, "options": options}
+                    _store_answers(store, session, answers)
+                    return _say(store, _options_text(session, level, options))
             draft_level(store, level, client, _drafting_brief(store, session))
         row = next(
             r for r in store.read_dataset("brand_build") if r.get("level") == str(level)

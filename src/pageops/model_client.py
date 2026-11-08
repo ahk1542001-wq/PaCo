@@ -489,6 +489,48 @@ class MetaModelClient:
         result = self.chat(messages, model=self.main_model)
         return result["choices"][0]["message"]["content"].strip()
 
+    def draft_brand_level_options(
+        self, level_name: str, brief: str, brand_voice: dict, count: int = 3
+    ) -> list:
+        """Draft `count` genuinely distinct options for one level.
+
+        The onboarding review offers the Audience and Positioning
+        levels as a pick between options instead of a single
+        draft: each option must take a DIFFERENT angle (a
+        different primary segment, promise or frame), never a
+        rewording of the same idea. Returns the option texts,
+        cleaned (non-strings and blanks dropped, exact duplicates
+        removed, at most `count`); the caller decides whether
+        what came back is a real choice (two or more) or falls
+        back to draft_brand_level's single draft.
+        """
+        instruction = (
+            f"Draft {count} options for the {level_name} level of "
+            "this brand, from the business brief and the brand "
+            "data (which carries the already-approved levels). "
+            "The options must be genuinely distinct: each takes a "
+            "different angle - a different primary audience "
+            "segment, a different central promise, a different "
+            "frame - and none is a rewording of another. Follow "
+            "the level's shape exactly: Audience, Positioning and "
+            "Journey as prose; the Offer as one service per line. "
+            "Invent no fact the brief does not carry. Return JSON "
+            "only: {options: [text, ...]}."
+        )
+        result = self._structured(
+            with_skills(instruction, "strategist"),
+            {"brief": brief, "brand_voice": brand_voice},
+            self.main_model,
+        )
+        options: list[str] = []
+        for entry in result.get("options") or []:
+            if not isinstance(entry, str):
+                continue
+            text = entry.strip()
+            if text and text not in options:
+                options.append(text)
+        return options[:count]
+
     def check_onboarding_conflicts(self, answers: dict, evidence: str) -> list:
         """Cross-check guided-onboarding answers against evidence.
 
@@ -997,6 +1039,24 @@ class MockClient:
     def draft_brand_level(self, level_name: str, brief: str, brand_voice: dict) -> str:
         name = brand_voice.get("brand_name") or "the brand"
         return f"{level_name} for {name}: drafted from the brief ({brief[:80]})."
+
+    def draft_brand_level_options(
+        self, level_name: str, brief: str, brand_voice: dict, count: int = 3
+    ) -> list:
+        """Deterministic offline options: the single-draft shape
+        under three fixed, distinct angles (the core buyers, the
+        wider market, the repeat buyers), so a test can tell the
+        options apart by their angle line and a pick is exact."""
+        name = brand_voice.get("brand_name") or "the brand"
+        angles = (
+            "angle: the core buyers first",
+            "angle: the wider market first",
+            "angle: the repeat buyers first",
+        )
+        return [
+            f"{level_name} for {name} ({angle}): drafted from the brief ({brief[:60]})."
+            for angle in angles[:count]
+        ]
 
     def check_onboarding_conflicts(self, answers: dict, evidence: str) -> list:
         """Deterministic offline cross-check (the mock's grammar

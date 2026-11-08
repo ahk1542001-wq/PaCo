@@ -67,8 +67,29 @@ def _confirm_pending(store, client):
     return proposal
 
 
+def _options(store):
+    """The level options currently on the table, if any."""
+    return _answers(store).get("_options") or {}
+
+
+def _pick(store, client, choice="1"):
+    """Answer the pending level-options pick; returns the
+    proposal card the pick produces."""
+    assert pending_proposal(store) is None
+    assert _options(store).get("options")
+    handle_message(store, client, choice)
+    proposal = pending_proposal(store)
+    assert proposal is not None and proposal["intent"] == "approve_brand_level"
+    return proposal
+
+
 def _confirm_all_levels(store, client):
-    for _level in (2, 3, 4, 5):
+    # Audience and Positioning are picks before they are
+    # proposals; Offer and Journey are proposed directly.
+    for _level in (2, 3):
+        _pick(store, client)
+        _confirm_pending(store, client)
+    for _level in (4, 5):
         proposal = pending_proposal(store)
         assert proposal is not None and proposal["intent"] == "approve_brand_level"
         _confirm_pending(store, client)
@@ -178,19 +199,39 @@ def test_full_walkthrough_levels_samples_and_closing(tmp_path):
     before_brand = store.read_dataset("brand_voice")
 
     result = _answer_questions(store, client)
-    # Drafting begins: a level-2 proposal, labelled answers-only
-    # (this store holds no page evidence), and brand data is
-    # exactly as it was - drafting alone writes nothing there.
-    proposal = pending_proposal(store)
-    assert proposal is not None and proposal["intent"] == "approve_brand_level"
-    assert "အဖြေများပေါ်တွင်သာ" in proposal["text"]
+    # Drafting begins with a level-2 options pick, labelled
+    # answers-only (this store holds no page evidence): three
+    # options on the table, no proposal yet, nothing drafted,
+    # and brand data exactly as it was.
+    assert pending_proposal(store) is None
+    offered = _options(store)
+    assert offered["level"] == 2 and len(offered["options"]) == 3
+    assert "ရွေးစရာ 3 ခု" in result["reply"]
+    assert "အဖြေများပေါ်တွင်သာ" in result["reply"]
     assert store.read_dataset("brand_voice") == before_brand
+    assert level_statuses(store)[2] == "empty"
+
+    # The pick records option 1 as the draft; the proposal card
+    # carries exactly that text, and brand data still has not
+    # moved - only the confirm writes there.
+    proposal = _pick(store, client, "1")
+    assert "အဖြေများပေါ်တွင်သာ" in proposal["text"]
+    assert json.loads(proposal["payload"])["assumed_content"] == offered["options"][0]
     assert level_statuses(store)[2] == "drafted"
+    assert store.read_dataset("brand_voice") == before_brand
 
     _confirm_pending(store, client)
     assert "Audience for" in store.get_brand_voice()["audience"]
     assert level_statuses(store)[2] == "approved"
-    for level, key in ((3, "positioning"), (4, "services"), (5, "journey")):
+
+    _pick(store, client, "1")  # Positioning is an options pick too
+    _confirm_pending(store, client)
+    assert level_statuses(store)[3] == "approved"
+
+    for level in (4, 5):
+        # Offer and Journey keep the single-draft flow: their
+        # proposal is already waiting, no pick in between.
+        assert not _options(store)
         proposal = pending_proposal(store)
         assert proposal is not None and proposal["intent"] == "approve_brand_level"
         _confirm_pending(store, client)
@@ -222,6 +263,7 @@ def test_level_proposal_cancel_pauses_and_resume_reproposes(tmp_path):
     store = Store(tmp_path)
     client = MockClient()
     _answer_questions(store, client)
+    _pick(store, client, "1")
     proposal = pending_proposal(store)
     first_content = json.loads(proposal["payload"])["assumed_content"]
     cancel_proposal(store, proposal["id"])
@@ -297,6 +339,11 @@ def test_conflict_with_evidence_is_asked_before_drafting(tmp_path):
 
     result = handle_message(store, client, "နှစ်မြို့လုံး target ထားပါ")
     assert _answers(store)["conflict_buyers"] == "နှစ်မြို့လုံး target ထားပါ"
+    # Drafting opens with the level-2 options pick; the
+    # proposal follows the pick.
+    assert pending_proposal(store) is None
+    assert _options(store)["level"] == 2
+    _pick(store, client, "1")
     proposal = pending_proposal(store)
     assert proposal is not None and proposal["intent"] == "approve_brand_level"
     # Evidence exists here, so no answers-only label.
@@ -315,6 +362,10 @@ def test_no_conflict_when_answer_and_evidence_agree(tmp_path):
     handle_message(store, client, EXAMPLES)
     handle_message(store, client, "ကျော်မယ်")
     assert active_session(store)["step"] == "review"
+    # The review opens with the level-2 options pick, and the
+    # first proposal follows the pick.
+    assert _options(store)["level"] == 2
+    _pick(store, client, "1")
     assert pending_proposal(store) is not None
 
 
@@ -329,3 +380,93 @@ def test_mock_conflict_check_shapes():
     )
     assert len(conflicts) == 1 and conflicts[0]["field"] == "buyers"
     assert "မန္တလေး" in conflicts[0]["question"]
+
+
+# -- Level options: the Audience / Positioning picks ----------------------------
+
+
+def test_options_render_for_level_two_with_three_choices(tmp_path):
+    store = Store(tmp_path)
+    client = MockClient()
+    result = _answer_questions(store, client)
+    offered = _options(store)
+    assert offered["level"] == 2
+    assert len(offered["options"]) == 3
+    assert len(set(offered["options"])) == 3  # distinct, not rewordings
+    for i, text in enumerate(offered["options"], 1):
+        assert f"{i}. {text}" in result["reply"]
+    # The transcript itself notes how many options were offered.
+    transcript_text = "\n".join(r["text"] for r in store.read_dataset("chat_log"))
+    assert "ရွေးစရာ 3 ခု" in transcript_text
+    # Nothing is drafted and nothing is proposed before the pick.
+    assert pending_proposal(store) is None
+    assert level_statuses(store)[2] == "empty"
+
+
+def test_picking_in_myanmar_digits_selects_that_option(tmp_path):
+    store = Store(tmp_path)
+    client = MockClient()
+    before_brand = store.read_dataset("brand_voice")
+    _answer_questions(store, client)
+    offered = _options(store)["options"]
+    proposal = _pick(store, client, "၂")
+    # The proposal carries exactly the second option's text.
+    assert json.loads(proposal["payload"])["assumed_content"] == offered[1]
+    assert level_statuses(store)[2] == "drafted"
+    # The pick alone wrote nothing to brand data; the confirm does.
+    assert store.read_dataset("brand_voice") == before_brand
+    _confirm_pending(store, client)
+    assert store.get_brand_voice()["audience"] == offered[1]
+
+
+def test_invalid_pick_reasks_without_advancing(tmp_path):
+    store = Store(tmp_path)
+    client = MockClient()
+    _answer_questions(store, client)
+    result = handle_message(store, client, "ဘာကြီးလဲ မသိပါ")
+    assert "ဘယ်တစ်ခုလဲ မရှင်းလိုက်ပါ" in result["reply"]
+    assert _options(store)["level"] == 2
+    assert pending_proposal(store) is None
+    assert level_statuses(store)[2] == "empty"
+    result = handle_message(store, client, "5")  # out of range
+    assert "ဘယ်တစ်ခုလဲ မရှင်းလိုက်ပါ" in result["reply"]
+    assert _options(store)["level"] == 2
+    _pick(store, client, "တတိယ")  # a Burmese ordinal also picks
+    assert level_statuses(store)[2] == "drafted"
+
+
+class _OneOptionClient(MockClient):
+    """A model that can only ever offer a single 'option'."""
+
+    def draft_brand_level_options(self, level_name, brief, brand_voice, count=3):
+        return ["One lonely option, not a choice."]
+
+
+def test_fewer_than_two_options_falls_back_to_single_draft(tmp_path):
+    store = Store(tmp_path)
+    client = _OneOptionClient()
+    _answer_questions(store, client)
+    # No pick is offered; the level arrives as the ordinary
+    # single-draft proposal and the interview never blocked.
+    assert not _options(store)
+    proposal = pending_proposal(store)
+    assert proposal is not None and proposal["intent"] == "approve_brand_level"
+    content = json.loads(proposal["payload"])["assumed_content"]
+    assert content.startswith("Audience for")  # the single-draft shape
+    assert level_statuses(store)[2] == "drafted"
+
+
+def test_pick_and_mock_option_shapes():
+    from pageops.onboarding import parse_pick
+
+    client = MockClient()
+    options = client.draft_brand_level_options(
+        "Audience", "a brief", {"brand_name": "FYF AI"}
+    )
+    assert len(options) == 3 and len(set(options)) == 3
+    assert parse_pick("2", 3) == 2
+    assert parse_pick("၂", 3) == 2
+    assert parse_pick("ဒုတိယ", 3) == 2
+    assert parse_pick("ပထမဆုံး", 3) == 1
+    assert parse_pick("5", 3) is None
+    assert parse_pick("ဘာကြီးလဲ", 3) is None

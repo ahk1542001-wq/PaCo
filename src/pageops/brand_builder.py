@@ -67,8 +67,9 @@ def _upsert(store: Store, level: int, status: str, content: str) -> dict:
     )
 
 
-def draft_level(store: Store, level: int, client, brief: str) -> dict:
-    """Draft one level's text. Refuses out of order."""
+def _check_draftable(store: Store, level: int) -> None:
+    """The gate every draft write passes: a known level, never
+    Identity, and the level below standing approved."""
     if level not in LEVELS:
         raise ValueError(f"Unknown brand level: {level}")
     if level == 1:
@@ -82,8 +83,23 @@ def draft_level(store: Store, level: int, client, brief: str) -> dict:
             f"Level {level} is locked: level {level - 1} "
             f"({LEVELS[level - 1]['name']}) is {statuses[level - 1]}, not approved."
         )
+
+
+def draft_level(store: Store, level: int, client, brief: str) -> dict:
+    """Draft one level's text. Refuses out of order."""
+    _check_draftable(store, level)
     brand = store.get_brand_voice()
     content = client.draft_brand_level(LEVELS[level]["name"], brief, brand)
+    return _upsert(store, level, "drafted", content)
+
+
+def record_draft(store: Store, level: int, content: str) -> dict:
+    """Record text drafted outside draft_level as a level's
+    draft - the guided-onboarding options pick, where the owner
+    chose one of several client-drafted options and the chosen
+    text becomes the draft. Same gate, same write: the level
+    stands drafted, awaiting the ordinary approval."""
+    _check_draftable(store, level)
     return _upsert(store, level, "drafted", content)
 
 
