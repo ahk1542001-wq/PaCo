@@ -467,6 +467,36 @@ def _card_compact(row: dict[str, str]) -> str:
     )
 
 
+def _variant_media_html(store: Store, media: str) -> str:
+    """A variant's media reference for the variants panel.
+
+    A servable image or clip directly under the store's visuals/
+    dir renders as a thumbnail through the /visual route (the
+    same convention as the board cards); anything else -- a
+    reference outside visuals/, a non-media path -- renders as
+    the reference text, so what the variant points at is always
+    visible and never silently dropped.
+    """
+    media = (media or "").strip()
+    if not media:
+        return ""
+    parts = media.replace("\\", "/").split("/")
+    if (
+        len(parts) == 2
+        and parts[0] == "visuals"
+        and parts[1].lower().endswith((".png", ".mp4"))
+        and (store.data_dir / media).exists()
+    ):
+        name = html.escape(parts[1])
+        if parts[1].lower().endswith(".mp4"):
+            return (
+                f' <video class="poster" src="/visual/{name}" '
+                'controls muted preload="metadata"></video>'
+            )
+        return f' <img class="poster" src="/visual/{name}" alt="Variant visual">'
+    return f' <span class="vmedia">[media: {html.escape(media)}]</span>'
+
+
 def render_board(store: Store) -> str:
     """Render the full dashboard HTML from the store's current data."""
     brand = store.get_brand_voice()
@@ -605,15 +635,15 @@ def render_board(store: Store) -> str:
     variant_rows = store.read_dataset("variants")
     if variant_rows:
         plan_topics = {r["id"]: r.get("topic", "") for r in plan_rows}
-        items = "".join(
-            "<li>"
-            + html.escape(
+
+        def _variant_item(v):
+            line = html.escape(
                 f"{plan_topics.get(v['plan_id'], v['plan_id'])} - {v['platform']} "
                 f"[{v['check_status']}]: {v['text'][:90]}"
             )
-            + "</li>"
-            for v in variant_rows
-        )
+            return "<li>" + line + _variant_media_html(store, v.get("media", "")) + "</li>"
+
+        items = "".join(_variant_item(v) for v in variant_rows)
         variants_panel = (
             '<section class="panel" id="variants"><h2>Cross-platform variants</h2>'
             f"<ul>{items}</ul>"
