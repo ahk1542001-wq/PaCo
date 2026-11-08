@@ -863,9 +863,52 @@ def render_board(store: Store) -> str:
     )
 
 
-def make_handler(store: Store):
+def _switcher_html(registry) -> str:
+    """The page switcher, injected into both nav surfaces.
+
+    render_board stays single-store and byte-identical; the
+    handler composes the multi-page surface around it. The block
+    reuses the sidebar's own classes (navgroup, btn-ghost), so no
+    new CSS is needed.
+    """
+    options = "".join(
+        f'<option value="{html.escape(p["name"])}"'
+        f'{" selected" if p["active"] else ""}>'
+        f'{html.escape(p["label"])}</option>'
+        for p in registry.pages()
+    )
+    return (
+        '<div class="navgroup">Page</div>'
+        '<form method="post" action="/switch-store">'
+        f'<select name="store">{options}</select>'
+        '<button class="btn-ghost" type="submit">Switch page</button></form>'
+        '<form method="post" action="/create-page">'
+        '<input name="name" placeholder="New page name">'
+        '<button class="btn-ghost" type="submit">Add page</button></form>'
+    )
+
+
+def render_page(registry) -> str:
+    """The board for the registry's active store, switcher included."""
+    page = render_board(registry.active())
+    block = _switcher_html(registry)
+    if "</aside>" in page:
+        page = page.replace("</aside>", block + "</aside>", 1)
+    if "</nav>" in page:
+        page = page.replace("</nav>", block + "</nav>", 1)
+    return page
+
+
+def make_handler(store):
+    from .stores import StoreRegistry
+
+    registry = (
+        store if isinstance(store, StoreRegistry) else StoreRegistry(store)
+    )
+
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):  # noqa: N802 (stdlib naming)
+            store = registry.active()
             if self.path.startswith("/visual/"):
                 from pathlib import Path as _Path
                 from urllib.parse import unquote as _unquote
@@ -898,7 +941,7 @@ def make_handler(store: Store):
                 self.end_headers()
                 self.wfile.write(data)
                 return
-            body = render_board(store).encode("utf-8")
+            body = render_page(registry).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -913,8 +956,13 @@ def make_handler(store: Store):
                 k: v[0]
                 for k, v in parse_qs(self.rfile.read(length).decode("utf-8")).items()
             }
+            store = registry.active()
             try:
-                if self.path == "/brief":
+                if self.path == "/switch-store":
+                    registry.switch(form.get("store", ""))
+                elif self.path == "/create-page":
+                    registry.create_page(form.get("name", ""))
+                elif self.path == "/brief":
                     from .pipeline import BRIEF_FIELDS, intake_brief
 
                     fields = {
