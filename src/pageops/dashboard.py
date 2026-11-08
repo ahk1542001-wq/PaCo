@@ -172,6 +172,15 @@ form.brandedit{display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wr
 form.brandedit label{min-width:170px}
 form.brandedit input{flex:1;min-width:160px}
 form.brandedit button{padding:8px 14px}
+/* chat */
+.chat-log{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+.chat-msg{display:flex;gap:8px;align-items:flex-start}
+.chat-who{font-size:12px;font-weight:600;color:var(--text-faint);min-width:38px;padding-top:2px;flex:none}
+.chat-owner .chat-who{color:var(--accent-deep)}
+.chat-text{font-family:var(--font-burmese);line-height:1.9;font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}
+.chat-prop{border-color:var(--border-strong);margin-bottom:2px}
+form.chat-send{display:flex;gap:8px;flex-wrap:wrap}
+form.chat-send input{flex:1;min-width:180px}
 /* tables */
 .twrap{overflow-x:auto}
 table{border-collapse:collapse;font-size:14px;width:100%}
@@ -200,12 +209,13 @@ td{border-bottom:1px solid var(--border);padding:6px 10px;text-align:left}
   .headrow{order:1;margin-bottom:16px}
   .headrow .btn-primary{display:none}
   #approvals{order:2}
-  .kpis{order:3;grid-template-columns:1fr 1fr}
+  #chat{order:3}
+  .kpis{order:4;grid-template-columns:1fr 1fr}
   .kpi:nth-child(3){border-left:none}
   .kpi:nth-child(n+3){border-top:1px solid var(--border)}
-  #new-brief{order:4}
-  #board-sec{order:5}
-  .lower{order:6}
+  #new-brief{order:5}
+  #board-sec{order:6}
+  .lower{order:7}
   .board{flex-direction:column;overflow-x:visible}
   .col{min-width:0;width:100%}
   button{min-height:44px}
@@ -707,6 +717,19 @@ def render_board(store: Store) -> str:
         "and stops at your approval gate.</p></section>"
     )
 
+    # --- Chat panel: the owner directs PaCo here; every change is
+    # proposed as an exact-change card and only a confirm executes
+    # (chat.py holds the safety property, this is just the surface).
+    from .chat import render_transcript
+
+    chat_panel = (
+        '<section class="panel" id="chat"><h2>PaCo နှင့် စကားပြောရန်</h2>'
+        f'<div class="chat-log">{render_transcript(store)}</div>'
+        '<form method="post" action="/chat" class="chat-send">'
+        '<input name="message" placeholder="လုပ်ချင်တာကို ဒီမှာ ရေးပါ — ဥပမာ status">'
+        '<button class="btn-primary" type="submit">ပို့ရန်</button></form></section>'
+    )
+
     brief_form = (
         '<section class="panel" id="new-brief"><h2>New brief</h2>'
         '<form method="post" action="/brief" class="brief">'
@@ -756,6 +779,7 @@ def render_board(store: Store) -> str:
         ("Work", [
             ("Approvals", "#approvals", True,
              f'<span class="badge">{len(awaiting_rows)}</span>'),
+            ("Chat", "#chat", False, ""),
             ("New brief", "#new-brief", False, ""),
             ("Board", "#board-sec", False, ""),
         ]),
@@ -833,7 +857,7 @@ def render_board(store: Store) -> str:
         '<div class="shell">'
         f"{sidebar}"
         '<main class="canvas">'
-        f"{headrow}{kpis}{approvals_section}{brief_form}{board_section}{lower}"
+        f"{headrow}{kpis}{approvals_section}{chat_panel}{brief_form}{board_section}{lower}"
         "</main></div>"
         "</body></html>"
     )
@@ -952,6 +976,30 @@ def make_handler(store: Store):
                     from .heartbeat import mark_notifications_read
 
                     mark_notifications_read(store)
+                elif self.path == "/chat":
+                    from .chat import handle_message
+                    from .model_client import get_client
+
+                    handle_message(store, get_client(), form.get("message", ""))
+                elif self.path == "/chat-confirm":
+                    from .chat import confirm_proposal
+                    from .model_client import (
+                        get_client,
+                        get_image_client,
+                        get_judge_client,
+                    )
+
+                    confirm_proposal(
+                        store,
+                        get_client(),
+                        form.get("proposal", ""),
+                        judge=get_judge_client(),
+                        image_client=get_image_client(),
+                    )
+                elif self.path == "/chat-cancel":
+                    from .chat import cancel_proposal
+
+                    cancel_proposal(store, form.get("proposal", ""))
                 elif self.path == "/brand":
                     from .pipeline import update_brand_voice
 

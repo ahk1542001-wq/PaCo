@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -378,6 +379,45 @@ class MetaModelClient:
             with_skills("Give a final verdict as JSON: {verdict: pass|revise, reasons: []} using the rule-check summary.", "brand-checker"),
             {"draft": draft, "check_summary": check_summary},
             self.verdict_model,
+        )
+
+    def parse_chat_intent(self, message: str, context: dict) -> dict:
+        """Parse one owner chat message into a structured intent.
+
+        The chat layer's only model call: it classifies what the
+        owner is asking for and copies the parameters out verbatim.
+        It never decides anything: the caller resolves the item in
+        code, shows the owner an exact-change proposal, and only a
+        separate confirm executes. Fields: intent (status | report |
+        approve | reject | edit_draft | schedule | set_brand |
+        set_brief | unknown), item_ref (the words or number the
+        owner used to point at the item, copied verbatim, else ""),
+        reason (reject only), new_text (edit_draft only), datetime
+        (ISO 8601 when the owner names a moment, else ""), brand_key
+        and value (set_brand only), brief (set_brief only).
+        """
+        instruction = (
+            "Parse the page owner's chat message into ONE intent as JSON: "
+            "{intent, item_ref, reason, new_text, datetime, brand_key, value, brief}. "
+            "intent is exactly one of: status (asking what is on the board), "
+            "report (asking for the latest performance report), approve, reject, "
+            "edit_draft (the owner supplies a replacement draft), schedule (the "
+            "owner names a date and time), set_brand (change one brand data key), "
+            "set_brief (replace the standing brief), unknown (anything else). "
+            "item_ref: copy the words or number the owner used to point at a post "
+            "verbatim (for example \"the third one\" or topic words); never invent "
+            "an item id. datetime: ISO 8601 if the owner names a moment, else \"\". "
+            "reason: the rejection reason when given, else \"\". new_text: the "
+            "replacement draft text exactly as the owner wrote it, else \"\". "
+            "brand_key: only a key from the context's brand_keys list, else \"\". "
+            "value: the new value for that key, else \"\". brief: the full new "
+            "standing brief text, else \"\". Propose nothing and explain nothing: "
+            "classification and copying only."
+        )
+        return self._structured(
+            instruction,
+            {"message": message, "context": context},
+            self.main_model,
         )
 
     def narrate(self, stats: dict, brand_voice: dict) -> str:
@@ -909,6 +949,98 @@ class MockClient:
             "verdict": "pass" if passed else "revise",
             "reasons": ["All deterministic brand rules passed."] if passed else [check_summary],
         }
+
+    def parse_chat_intent(self, message: str, context: dict) -> dict:
+        """Deterministic offline intent parse for the chat layer.
+
+        A small documented grammar (the real client reads natural
+        language; the mock reads exactly these shapes):
+          "set standing brief to: <text>"     -> set_brief
+          "set <brand_key> to <value>"        -> set_brand
+          "approve post 3" / "approve \"<topic words>\"" /
+          "approve the third one"             -> approve
+          "reject post 2 because <reason>"    -> reject
+          "edit post 1: <new text>" or
+          "edit post 1 \"<new text>\""        -> edit_draft
+          "schedule post 1 at 2026-11-10T19:00" -> schedule
+          "report"                            -> report
+          "status" / "how many"               -> status
+        Anything else is unknown. The item reference comes back in
+        item_ref ("post 3", "third", or the quoted topic words);
+        the chat layer resolves it against the store in code.
+        """
+        text = (message or "").strip()
+        low = text.lower()
+        out = {
+            "intent": "unknown",
+            "item_ref": "",
+            "reason": "",
+            "new_text": "",
+            "datetime": "",
+            "brand_key": "",
+            "value": "",
+            "brief": "",
+        }
+        stamp = re.search(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}", text)
+        if stamp:
+            out["datetime"] = stamp.group(0).replace(" ", "T")
+        quoted = re.search(r'"([^"]+)"', text)
+        numbered = re.search(r"\b(?:post|item)\s+(\d+)\b", low)
+        ordinal = re.search(
+            r"\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\b",
+            low,
+        )
+        if numbered:
+            out["item_ref"] = f"post {numbered.group(1)}"
+        elif ordinal:
+            out["item_ref"] = ordinal.group(1)
+
+        if "standing brief" in low:
+            out["intent"] = "set_brief"
+            brief = text.split(":", 1)[1] if ":" in text else ""
+            if not brief and " to " in low:
+                brief = text[low.index(" to ") + 4:]
+            out["brief"] = brief.strip()
+            return out
+        brand_set = re.match(r"\s*set\s+([a-z_]+)\s+to\s+(.+)$", text, re.IGNORECASE | re.DOTALL)
+        if brand_set:
+            out["intent"] = "set_brand"
+            out["brand_key"] = brand_set.group(1).lower()
+            out["value"] = brand_set.group(2).strip()
+            return out
+        if "approve" in low:
+            out["intent"] = "approve"
+            if quoted and not numbered and not ordinal:
+                out["item_ref"] = quoted.group(1)
+            return out
+        if "reject" in low:
+            out["intent"] = "reject"
+            if "because" in low:
+                out["reason"] = text[low.index("because") + len("because"):].strip()
+            elif ":" in text:
+                out["reason"] = text.split(":", 1)[1].strip()
+            if quoted and not numbered and not ordinal and not out["reason"]:
+                out["item_ref"] = quoted.group(1)
+            return out
+        if "edit" in low or "replace" in low:
+            out["intent"] = "edit_draft"
+            if quoted:
+                out["new_text"] = quoted.group(1)
+            elif ":" in text:
+                out["new_text"] = text.split(":", 1)[1].strip()
+            return out
+        if "schedule" in low:
+            out["intent"] = "schedule"
+            if quoted and not numbered and not ordinal:
+                out["item_ref"] = quoted.group(1)
+            return out
+        if "report" in low:
+            out["intent"] = "report"
+            return out
+        if "status" in low or "how many" in low or "board" in low:
+            out["intent"] = "status"
+            return out
+        return out
 
     def humanize(self, text: str, brand_voice: dict) -> str:
         """Offline stand-in: the mock has no model, so the text
