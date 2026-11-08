@@ -88,17 +88,23 @@ def collect_corpus(store) -> list[dict]:
     return chunks
 
 
-def retrieve(store, query: str, limit: int = 3) -> list[dict]:
+def retrieve(store, query: str, limit: int = 3, exclude_refs=None) -> list[dict]:
     """The stored chunks most relevant to the query.
 
     Each result carries its score and the matched term count behind
-    it. Zero-score chunks are never returned.
+    it. Zero-score chunks are never returned. Chunks whose ref
+    starts with any of exclude_refs (ref prefixes, e.g. "plan 7:")
+    are never returned -- a draft being written must not retrieve
+    its own plan row's stored draft as reference material.
     """
     query_terms = _terms(query or "")
     if not query_terms:
         return []
+    prefixes = tuple(exclude_refs or ())
     scored = []
     for idx, chunk in enumerate(collect_corpus(store)):
+        if prefixes and chunk["ref"].startswith(prefixes):
+            continue
         chunk_terms = _terms(chunk["text"])
         matched = {t: chunk_terms[t] for t in query_terms if t in chunk_terms}
         if not matched:
@@ -119,13 +125,13 @@ def retrieve(store, query: str, limit: int = 3) -> list[dict]:
     return results
 
 
-def retrieval_context(store, query: str, limit: int = 3) -> str:
+def retrieval_context(store, query: str, limit: int = 3, exclude_refs=None) -> str:
     """Retrieved material as a prompt-ready context block.
 
     Empty string when nothing in the store is relevant, so callers
     can join it with other context without leaving gaps.
     """
-    hits = retrieve(store, query, limit=limit)
+    hits = retrieve(store, query, limit=limit, exclude_refs=exclude_refs)
     if not hits:
         return ""
     lines = [
