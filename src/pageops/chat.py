@@ -25,7 +25,8 @@ the whole layer:
     the proposal stale and nothing executes.
   - One pending proposal at a time: a new mutating message
     supersedes the old pending one, visibly in the transcript.
-  - Item references ("the third one", topic words) are resolved
+  - Item references ("the third one", Burmese ordinals like
+    ပထမဆုံး, Myanmar digits, topic words) are resolved
     deterministically in code against the board's own order. An
     ambiguous reference proposes nothing and asks.
 
@@ -80,11 +81,54 @@ _ORDINALS = {
     "tenth": 10,
 }
 
+# Myanmar digits, in Latin order 1..9,0: a reference written with
+# them means exactly what the same digits mean in Latin form.
+_MY_DIGIT_TRANSLATION = str.maketrans("၁၂၃၄၅၆၇၈၉၀", "1234567890")
+
+# Burmese ordinals for the queue positions a reference can name.
+# Compound forms come before their prefixes (ပထမဆုံး before ပထမ)
+# so a fused token matches the longest ordinal it starts with.
+_BURMESE_ORDINALS = {
+    "ပထမဆုံး": 1,
+    "အရင်ဆုံး": 1,
+    "ပထမ": 1,
+    "ဒုတိယ": 2,
+    "တတိယ": 3,
+    "စတုတ္ထ": 4,
+    "ပဉ္စမ": 5,
+    "ဆဋ္ဌမ": 6,
+    "သတ္တမ": 7,
+}
+
+# The Burmese word for "last" is a position only the pool's own
+# length can settle, so the resolver returns it as a marker.
+_LAST = "last"
+_LAST_WORD = "နောက်ဆုံး"
+
+# Words that frame a reference inside a natural sentence without
+# pointing at a topic: English function words, Burmese particles
+# and classifiers, words describing the waiting pool the owner is
+# pointing into, and the intent verbs themselves (they land in the
+# reference when a parser copies a whole sentence). A reference
+# resolves positionally when, once these are removed, exactly one
+# positional marker is all that remains.
+_REF_FILLER = frozenset(
+    {
+        "the", "post", "posts", "item", "items", "one", "no", "number",
+        "ကို", "ဟာ", "က", "တွေ", "ရဲ့", "တဲ့", "တာ",
+        "တစ်ခု", "တခု", "ခု", "ခုမြောက်",
+        "စောင့်နေတဲ့", "စောင့်နေတာ", "စောင့်နေသော",
+        "approve", "reject", "edit", "schedule",
+        "လုပ်မယ်", "လုပ်ပါ", "လုပ်ပေးပါ", "လုပ်ပေးမယ်",
+    }
+)
+
 CAPABILITY_TEXT = (
     "အဲ့ဒါကို နားမလည်လိုက်ပါ။ ကျွန်တော် လုပ်ပေးနိုင်တာတွေက —\n"
     "• အခြေအနေ ကြည့်ရန်: \"status\"\n"
     "• နောက်ဆုံး report: \"report\"\n"
-    "• Approve: \"approve post 1\" (သို့) \"approve the third one\"\n"
+    "• Approve: \"approve post 1\" (သို့) \"approve the third one\" "
+    "(သို့) \"ပထမဆုံး post ကို approve လုပ်မယ်\"\n"
     "• Reject: \"reject post 2 because <အကြောင်းရင်း>\"\n"
     "• Draft ပြင်: \"edit post 1: <စာသားအသစ်>\"\n"
     "• Schedule: \"schedule post 1 at 2026-11-10T19:00\"\n"
@@ -170,20 +214,63 @@ def _intent_context(store: Store) -> dict:
     }
 
 
-def _ref_index(ref: str) -> int | None:
-    """A 1-based position from a short positional reference
-    ("post 3", "#3", "the third one"), or None when the reference
-    is not positional. Long references are topic words, never
-    positions, so a topic containing a digit cannot be misread."""
-    r = (ref or "").strip().lower().strip('"')
+def _token_marker(token: str) -> int | str | None:
+    """The positional marker a single reference token carries, if
+    any: a bare number or counted number ("3", "3ခုမြောက်"), a
+    Burmese ordinal (possibly fused with its classifier,
+    "ပထမတစ်ခု"), or the last marker (နောက်ဆုံး)."""
+    if token == _LAST_WORD:
+        return _LAST
+    counted = re.fullmatch(r"(\d+)ခုမြောက်", token)
+    if counted:
+        return int(counted.group(1))
+    bare = re.fullmatch(r"(\d+)(?:ခု)?", token)
+    if bare:
+        return int(bare.group(1))
+    for word, position in _BURMESE_ORDINALS.items():
+        if token == word:
+            return position
+        if token.startswith(word) and token[len(word):] in _REF_FILLER:
+            return position
+    return None
+
+
+def _ref_index(ref: str) -> int | str | None:
+    """How a reference points into its pool: a 1-based position,
+    the string "last" for the pool's final item, or None when the
+    reference is not positional (it is topic words then).
+
+    Strict shapes first ("post 3", "#3", "the third one" - Latin
+    or Myanmar digits alike). Then the natural-sentence scan the
+    product's Burmese-speaking owners actually produce: drop the
+    filler words that frame a reference and, if exactly one
+    positional marker (an English or Burmese ordinal, an
+    "N ခုမြောက်" count, နောက်ဆုံး) is all that remains, that
+    marker is the position. A reference carrying real content
+    words never resolves this way, so a topic containing a digit
+    or an ordinal cannot be misread as a position."""
+    r = (ref or "").strip().lower().strip('"').translate(_MY_DIGIT_TRANSLATION)
     if not r:
         return None
     if re.fullmatch(r"(post|item|#|no\.?|number)?\s*\d+", r):
         return int(re.search(r"\d+", r).group(0))
-    words = [w.strip(".,'\"") for w in r.split()]
+    words = [w.strip(".,'\"၊။") for w in r.split()]
+    words = [w for w in words if w]
     core = [w for w in words if w not in ("the", "post", "item", "one", "no", "number")]
     if len(words) <= 4 and len(core) == 1 and core[0] in _ORDINALS:
         return _ORDINALS[core[0]]
+    markers: list[int | str] = []
+    remainder = []
+    for token in words:
+        marker = _token_marker(token)
+        if marker is not None:
+            markers.append(marker)
+        elif token in _ORDINALS:
+            markers.append(_ORDINALS[token])
+        elif token not in _REF_FILLER:
+            remainder.append(token)
+    if len(markers) == 1 and not remainder:
+        return markers[0]
     return None
 
 
@@ -214,6 +301,8 @@ def resolve_item(store: Store, intent: str, item_ref: str) -> tuple[dict | None,
         )
     index = _ref_index(ref)
     if index is not None:
+        if index == _LAST:
+            index = len(pool)
         if 1 <= index <= len(pool):
             return pool[index - 1], ""
         return None, (

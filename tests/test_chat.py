@@ -17,6 +17,7 @@ from pageops.chat import (
     handle_message,
     pending_proposal,
     render_transcript,
+    resolve_item,
     transcript,
 )
 from pageops.context import save_last_report
@@ -205,6 +206,110 @@ def test_ordinal_reference_resolves_in_board_order(tmp_path):
     assert proposal["item_id"] == target["id"]
     confirm_proposal(store, MockClient(), result["proposal_id"])
     assert _plan_by_id(store)[target["id"]]["status"] == "approved"
+
+
+# -- Burmese item references (the owners speak Burmese) --------------------------
+
+_BURMESE_ORDINALS = [
+    ("ပထမ", 1),
+    ("ပထမဆုံး", 1),
+    ("အရင်ဆုံး", 1),
+    ("ဒုတိယ", 2),
+    ("တတိယ", 3),
+    ("စတုတ္ထ", 4),
+    ("ပဉ္စမ", 5),
+    ("ဆဋ္ဌမ", 6),
+    ("သတ္တမ", 7),
+]
+
+
+def _pool(store, count=7):
+    return [_awaiting(store, topic=f"Post {i}") for i in range(1, count + 1)]
+
+
+def test_mock_parse_burmese_references():
+    client = MockClient()
+    parsed = client.parse_chat_intent(
+        "ပထမဆုံး စောင့်နေတဲ့ post ကို approve လုပ်မယ်", {}
+    )
+    assert parsed["intent"] == "approve" and parsed["item_ref"] == "ပထမဆုံး"
+    parsed = client.parse_chat_intent("approve post ၁", {})
+    assert parsed["intent"] == "approve" and parsed["item_ref"] == "post ၁"
+    parsed = client.parse_chat_intent("approve ၃ ခုမြောက် post", {})
+    assert parsed["intent"] == "approve" and parsed["item_ref"] == "၃ ခုမြောက်"
+    for word, _position in _BURMESE_ORDINALS:
+        parsed = client.parse_chat_intent(f"approve {word} post", {})
+        assert parsed["item_ref"] == word
+    parsed = client.parse_chat_intent("approve နောက်ဆုံး post", {})
+    assert parsed["item_ref"] == "နောက်ဆုံး"
+
+
+def test_burmese_ordinals_resolve_to_pool_positions(tmp_path):
+    store = Store(tmp_path)
+    pool = _pool(store)
+    for word, position in _BURMESE_ORDINALS:
+        row, problem = resolve_item(store, "approve", word)
+        assert problem == "" and row["id"] == pool[position - 1]["id"], word
+
+
+def test_burmese_ordinal_with_counter_resolves(tmp_path):
+    store = Store(tmp_path)
+    pool = _pool(store, count=3)
+    row, problem = resolve_item(store, "approve", "ပထမ တစ်ခု")
+    assert problem == "" and row["id"] == pool[0]["id"]
+    row, problem = resolve_item(store, "approve", "ဒုတိယ တစ်ခု")
+    assert problem == "" and row["id"] == pool[1]["id"]
+
+
+def test_myanmar_digit_references_resolve(tmp_path):
+    store = Store(tmp_path)
+    pool = _pool(store)
+    row, problem = resolve_item(store, "approve", "post ၂")
+    assert problem == "" and row["id"] == pool[1]["id"]
+    row, problem = resolve_item(store, "approve", "၃ ခုမြောက်")
+    assert problem == "" and row["id"] == pool[2]["id"]
+    row, problem = resolve_item(store, "approve", "post ၇")
+    assert problem == "" and row["id"] == pool[6]["id"]
+
+
+def test_last_reference_resolves_to_the_final_pool_item(tmp_path):
+    store = Store(tmp_path)
+    pool = _pool(store, count=3)
+    row, problem = resolve_item(store, "approve", "နောက်ဆုံး")
+    assert problem == "" and row["id"] == pool[-1]["id"]
+
+
+def test_first_waiting_post_sentence_end_to_end(tmp_path):
+    # The exact sentence that failed live on 2026-11-08: a natural
+    # Burmese reference inside a full sentence must propose the
+    # first awaiting item, change nothing until confirm, and then
+    # approve exactly that item.
+    store = Store(tmp_path)
+    first = _awaiting(store, topic="First post")
+    second = _awaiting(store, topic="Second post")
+    before = store.read_dataset("plan")
+    result = handle_message(
+        store, MockClient(), "ပထမဆုံး စောင့်နေတဲ့ post ကို approve လုပ်မယ်"
+    )
+    proposal = pending_proposal(store)
+    assert proposal is not None and proposal["item_id"] == first["id"]
+    assert store.read_dataset("plan") == before
+    outcome = confirm_proposal(store, MockClient(), result["proposal_id"])
+    assert outcome["ok"] is True
+    rows = _plan_by_id(store)
+    assert rows[first["id"]]["status"] == "approved"
+    assert rows[second["id"]]["status"] == "awaiting_approval"
+
+
+def test_burmese_marker_inside_topic_words_stays_a_topic(tmp_path):
+    # The positional scan must not swallow a reference carrying
+    # real topic words: နောက်ဆုံး + content words is a topic
+    # reference, settled by topic matching, not by position.
+    store = Store(tmp_path)
+    target = _awaiting(store, topic="နောက်ဆုံး သတင်း အကျဉ်း")
+    _awaiting(store, topic="Another post")
+    row, problem = resolve_item(store, "approve", "နောက်ဆုံး သတင်း")
+    assert problem == "" and row["id"] == target["id"]
 
 
 # -- Each mutating intent, end to end --------------------------------------------
