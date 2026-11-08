@@ -729,6 +729,17 @@ class MetaImageClient:
         return raw
 
 
+# Burmese reference words the mock chat grammar recognises, in
+# the owner's own forms: the ordinals ပထမ..သတ္တမ (compound forms
+# first, so ပထမဆုံး wins over its prefix ပထမ as a substring) and
+# နောက်ဆုံး (last). The chat layer resolves them in code; the
+# mock only copies the word into item_ref, like the real client.
+_BURMESE_REF_WORDS = (
+    "ပထမဆုံး", "အရင်ဆုံး", "နောက်ဆုံး", "ပထမ",
+    "ဒုတိယ", "တတိယ", "စတုတ္ထ", "ပဉ္စမ", "ဆဋ္ဌမ", "သတ္တမ",
+)
+
+
 class MockClient:
     """Canned structured outputs. Deterministic, offline, free."""
 
@@ -965,8 +976,13 @@ class MockClient:
           "schedule post 1 at 2026-11-10T19:00" -> schedule
           "report"                            -> report
           "status" / "how many"               -> status
-        Anything else is unknown. The item reference comes back in
-        item_ref ("post 3", "third", or the quoted topic words);
+        Burmese references are recognised wherever the English
+        ones are: the ordinals ပထမ / ပထမဆုံး / အရင်ဆုံး,
+        ဒုတိယ, တတိယ, စတုတ္ထ, ပဉ္စမ, ဆဋ္ဌမ, သတ္တမ and
+        နောက်ဆုံး (last), Myanmar digits ("post ၁"), and counted
+        forms ("၃ ခုမြောက်"). Anything else is unknown. The item
+        reference comes back in item_ref ("post 3", "third",
+        "ပထမဆုံး", "၃ ခုမြောက်", or the quoted topic words);
         the chat layer resolves it against the store in code.
         """
         text = (message or "").strip()
@@ -985,15 +1001,21 @@ class MockClient:
         if stamp:
             out["datetime"] = stamp.group(0).replace(" ", "T")
         quoted = re.search(r'"([^"]+)"', text)
-        numbered = re.search(r"\b(?:post|item)\s+(\d+)\b", low)
+        numbered = re.search(r"\b(?:post|item)\s+([0-9\u1040-\u1049]+)", low)
         ordinal = re.search(
             r"\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\b",
             low,
         )
+        counted = re.search(r"([0-9\u1040-\u1049]+)\s*ခုမြောက်", text)
+        burmese = next((w for w in _BURMESE_REF_WORDS if w in text), None)
         if numbered:
             out["item_ref"] = f"post {numbered.group(1)}"
+        elif counted:
+            out["item_ref"] = f"{counted.group(1)} ခုမြောက်"
         elif ordinal:
             out["item_ref"] = ordinal.group(1)
+        elif burmese:
+            out["item_ref"] = burmese
 
         if "standing brief" in low:
             out["intent"] = "set_brief"
@@ -1010,7 +1032,7 @@ class MockClient:
             return out
         if "approve" in low:
             out["intent"] = "approve"
-            if quoted and not numbered and not ordinal:
+            if quoted and not out["item_ref"]:
                 out["item_ref"] = quoted.group(1)
             return out
         if "reject" in low:
@@ -1019,7 +1041,7 @@ class MockClient:
                 out["reason"] = text[low.index("because") + len("because"):].strip()
             elif ":" in text:
                 out["reason"] = text.split(":", 1)[1].strip()
-            if quoted and not numbered and not ordinal and not out["reason"]:
+            if quoted and not out["item_ref"] and not out["reason"]:
                 out["item_ref"] = quoted.group(1)
             return out
         if "edit" in low or "replace" in low:
@@ -1031,7 +1053,7 @@ class MockClient:
             return out
         if "schedule" in low:
             out["intent"] = "schedule"
-            if quoted and not numbered and not ordinal:
+            if quoted and not out["item_ref"]:
                 out["item_ref"] = quoted.group(1)
             return out
         if "report" in low:
