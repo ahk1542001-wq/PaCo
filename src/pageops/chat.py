@@ -32,6 +32,14 @@ the whole layer:
 
 The transcript lives in the store like everything else (chat_log
 dataset), so the CSV and SQLite backends carry it identically.
+
+Guided onboarding (Phase 2, pageops.onboarding) rides this layer:
+while an interview session is active its messages are answers, not
+intents, and its drafting / voice-sample / closing proposals are
+ordinary proposals here - intents approve_brand_level and
+close_onboarding, plus set_brand carrying an onboarding marker -
+executed and staleness-checked by the same gate, with onboarding
+hooks advancing the interview after a confirm or a cancel.
 """
 
 from __future__ import annotations
@@ -134,6 +142,7 @@ CAPABILITY_TEXT = (
     "• Schedule: \"schedule post 1 at 2026-11-10T19:00\"\n"
     "• Brand data ပြင်: \"set tone to <တန်ဖိုးအသစ်>\"\n"
     "• Standing brief လဲ: \"set standing brief to: <brief အသစ်>\"\n"
+    "• Brand setup (အင်တာဗျူး): \"setup စမယ်\"\n"
     "ပြောင်းလဲမှု တိုင်းကို အရင် အဆိုပြုချက် အဖြစ် အတိအကျ ပြပေးပြီး၊ "
     "အတည်ပြုချက်ရမှသာ လုပ်ဆောင်ပါမယ်။"
 )
@@ -469,6 +478,19 @@ def handle_message(store: Store, client, message: str) -> dict:
     if not message:
         return {"intent": "empty", "reply": ""}
     _append(store, "owner", "message", message)
+
+    # Guided onboarding (Phase 2) sits in front of intent parsing:
+    # while an interview session is active, the message IS an
+    # answer to its current question, and the start phrase is
+    # recognised in code so start/resume never depends on a parse.
+    from . import onboarding
+
+    active = onboarding.active_session(store)
+    if active is not None:
+        return onboarding.handle_active_message(store, client, active, message)
+    if onboarding.is_start_message(message):
+        return onboarding.start_or_resume(store, client)
+
     try:
         parsed = client.parse_chat_intent(message, _intent_context(store)) or {}
     except Exception:
@@ -479,11 +501,15 @@ def handle_message(store: Store, client, message: str) -> dict:
         for name in ("item_ref", "reason", "new_text", "datetime", "brand_key", "value", "brief")
     }
 
+    if intent == "start_setup":
+        return onboarding.start_or_resume(store, client)
     if intent == "status":
         return _reply(store, intent, _status_text(store))
     if intent == "report":
         return _reply(store, intent, _report_text(store))
     if intent not in MUTATING_INTENTS:
+        if onboarding.brand_is_empty(store) and onboarding.current_session(store) is None:
+            return _reply(store, "unknown", onboarding.SETUP_OFFER_TEXT)
         return _reply(store, "unknown", CAPABILITY_TEXT)
 
     _supersede_pending(store)
@@ -614,6 +640,31 @@ def _stale_reason(store: Store, intent: str, payload: dict) -> str:
         if _standing_brief(store) != payload.get("old_brief", ""):
             return "Standing brief စာသား ပြောင်းသွားပါပြီ။"
         return ""
+    if intent == "approve_brand_level":
+        row = next(
+            (
+                r
+                for r in store.read_dataset("brand_build")
+                if r.get("level") == str(payload.get("level", ""))
+            ),
+            None,
+        )
+        if row is None or row.get("status", "") != "drafted":
+            return "အဲ့ဒီ အဆင့် မူကြမ်း မရှိတော့ပါ / အခြေအနေ ပြောင်းသွားပါပြီ။"
+        if row.get("content", "") != payload.get("assumed_content", ""):
+            return "အဆင့် မူကြမ်း စာသား ပြောင်းသွားပါပြီ။ အဆိုပြုချက်က ပြခဲ့တဲ့ စာသား မဟုတ်တော့ပါ။"
+        return ""
+    if intent == "close_onboarding":
+        from .onboarding import session_by_id
+
+        session = session_by_id(store, payload.get("onboarding", ""))
+        if (
+            session is None
+            or session.get("status") != "active"
+            or session.get("step") != "closing"
+        ):
+            return "Setup အခြေအနေ ပြောင်းသွားပါပြီ။"
+        return ""
     return "အဆိုပြုချက် အမျိုးအစား မသိပါ။"
 
 
@@ -651,6 +702,24 @@ def _execute(store: Store, client, intent: str, payload: dict, judge, image_clie
     if intent == "set_brand":
         update_brand_voice(store, payload.get("brand_key", ""), payload.get("new_value", ""))
         return f"Brand data ပြင်ပြီးပါပြီ — {payload.get('brand_key', '')}"
+    if intent == "approve_brand_level":
+        from .brand_builder import approve_level
+
+        level = int(payload.get("level", 0))
+        approve_level(store, level)
+        return (
+            f"Brand အဆင့် {level} ({payload.get('level_name', '')}) ကို "
+            "အတည်ပြုပြီး brand data ထဲ ရေးပြီးပါပြီ။"
+        )
+    if intent == "close_onboarding":
+        from .onboarding import complete_session
+
+        complete_session(store, payload.get("onboarding", ""))
+        return (
+            "Setup ပြီးဆုံးပါပြီ — target, style နဲ့ offer ကို brand data "
+            "ထဲ မှတ်ပြီးပါပြီ။ နောက်တစ်ဆင့် အနေနဲ့ dashboard မှာ ပထမဆုံး "
+            "brief တစ်ခု ပေးပြီး content စလို့ ရပါပြီ။"
+        )
     # set_brief: the same file write the /standing-brief route does.
     (store.data_dir / "standing-brief.txt").write_text(
         payload.get("new_brief", ""), encoding="utf-8"
@@ -707,6 +776,21 @@ def confirm_proposal(
         return {"ok": False, "reason": "execution_failed"}
     store.update_row("chat_log", proposal["id"], {"status": "confirmed"})
     _append(store, "paco", "result", outcome)
+    if payload.get("onboarding"):
+        # A confirmed onboarding proposal moves the interview
+        # forward (next level drafted/proposed, samples -> closing
+        # card). A failure here must be visible, never silent: the
+        # confirmed action itself already stands.
+        try:
+            from .onboarding import on_confirmed
+
+            on_confirmed(store, client, proposal)
+        except Exception as exc:
+            _append(
+                store, "paco", "result",
+                f"Setup နောက်တစ်ဆင့် ပြင်ဆင်တာ မအောင်မြင်ခဲ့ပါ — {exc} "
+                "\"setup စမယ်\" နဲ့ ပြန်ဆက်နိုင်ပါတယ်။",
+            )
     return {"ok": True, "outcome": outcome}
 
 
@@ -721,6 +805,14 @@ def cancel_proposal(store: Store, proposal_id: str) -> dict:
                     f"အဆိုပြုချက် #{proposal_id} ကို ဖျက်လိုက်ပါပြီ။ "
                     "ဘာမှ မပြောင်းလဲပါ။",
                 )
+                try:
+                    payload = json.loads(row.get("payload") or "{}")
+                except json.JSONDecodeError:
+                    payload = {}
+                if payload.get("onboarding"):
+                    from .onboarding import on_cancelled
+
+                    on_cancelled(store, row)
                 return {"ok": True}
             _append(
                 store, "paco", "result",
@@ -787,6 +879,12 @@ def _proposal_card(store: Store, row: dict, plan_by_id: dict) -> str:
     if intent == "set_brief":
         parts.append(
             f'<div class="chat-text">{html.escape(payload.get("new_brief", ""))}</div>'
+        )
+    if intent == "approve_brand_level":
+        parts.append(
+            f'<div class="meta">အဆင့် {html.escape(str(payload.get("level", "")))}'
+            f' · {html.escape(payload.get("level_name", ""))}</div>'
+            f'<div class="chat-text">{html.escape(payload.get("assumed_content", ""))}</div>'
         )
     if row.get("status") == "pending":
         parts.append(
