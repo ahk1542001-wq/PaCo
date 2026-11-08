@@ -286,6 +286,15 @@ class Store:
         # that never send samples are never sample-matched.
         if raw.get("voice_samples", "").strip():
             voice["voice_samples"] = raw["voice_samples"].strip()
+        # Extra letter scripts the brand legitimately writes in
+        # (the checker's unexpected_script rule): opt-in like the
+        # floor, split on ',' or ';', present only when set.
+        if raw.get("allowed_scripts", "").strip():
+            voice["allowed_scripts"] = [
+                s.strip()
+                for s in raw["allowed_scripts"].replace(";", ",").split(",")
+                if s.strip()
+            ]
         # Connected Postiz channels per platform (owner's
         # direction, 2026-11-04): each platform connects one by
         # one in the product, its integration id stored as brand
