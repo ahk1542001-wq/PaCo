@@ -34,6 +34,7 @@ DATASETS: dict[str, list[str]] = {
         "id", "created", "role", "kind", "text", "intent", "item_id",
         "payload", "status",
     ],
+    "onboarding": ["id", "created", "step", "answers", "status"],
 }
 
 # Seed brand voice for the demo brand, FYF AI: an AI-automation services

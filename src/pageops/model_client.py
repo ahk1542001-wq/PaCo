@@ -390,7 +390,7 @@ class MetaModelClient:
         code, shows the owner an exact-change proposal, and only a
         separate confirm executes. Fields: intent (status | report |
         approve | reject | edit_draft | schedule | set_brand |
-        set_brief | unknown), item_ref (the words or number the
+        set_brief | start_setup | unknown), item_ref (the words or number the
         owner used to point at the item, copied verbatim, else ""),
         reason (reject only), new_text (edit_draft only), datetime
         (ISO 8601 when the owner names a moment, else ""), brand_key
@@ -403,7 +403,9 @@ class MetaModelClient:
             "report (asking for the latest performance report), approve, reject, "
             "edit_draft (the owner supplies a replacement draft), schedule (the "
             "owner names a date and time), set_brand (change one brand data key), "
-            "set_brief (replace the standing brief), unknown (anything else). "
+            "set_brief (replace the standing brief), start_setup (the owner "
+            "asks to start or resume the guided brand setup interview, for "
+            "example \"setup စမယ်\"), unknown (anything else). "
             "item_ref: copy the words or number the owner used to point at a post "
             "verbatim (for example \"the third one\" or topic words); never invent "
             "an item id. datetime: ISO 8601 if the owner names a moment, else \"\". "
@@ -486,6 +488,50 @@ class MetaModelClient:
         ]
         result = self.chat(messages, model=self.main_model)
         return result["choices"][0]["message"]["content"].strip()
+
+    def check_onboarding_conflicts(self, answers: dict, evidence: str) -> list:
+        """Cross-check guided-onboarding answers against evidence.
+
+        The evidence is text built from the page's own data
+        (insights, metrics, existing drafts, analyst summaries).
+        Returns [{field, question}]: one entry per GENUINE factual
+        contradiction between an answer and the evidence (who
+        buys, where they are, what is sold) - never a style
+        difference. question is one plain-language Burmese question
+        naming both sides and asking which is right; the interview
+        asks it verbatim and stores the owner's resolution. Empty
+        evidence or no contradiction -> [].
+        """
+        if not (evidence or "").strip():
+            return []
+        instruction = (
+            "Compare the page owner's onboarding answers with the "
+            "evidence from their page's own data. Return JSON: "
+            "{conflicts: [{field, question}]}. A conflict is a "
+            "genuine factual contradiction between an answer and "
+            "the evidence (who buys, where they are, what is sold) "
+            "- never a style or tone difference. field is the "
+            "answer key contradicted (sells | buyers | questions). "
+            "question is ONE plain-language Burmese question that "
+            "names both sides and asks which is right. Use only "
+            "facts the evidence carries; invent nothing. When "
+            "nothing contradicts, conflicts is []."
+        )
+        result = self._structured(
+            instruction,
+            {"answers": answers, "evidence": evidence},
+            self.main_model,
+        )
+        conflicts = []
+        for entry in result.get("conflicts") or []:
+            if isinstance(entry, dict) and entry.get("question"):
+                conflicts.append(
+                    {
+                        "field": str(entry.get("field") or ""),
+                        "question": str(entry["question"]),
+                    }
+                )
+        return conflicts
 
     def adapt_variant(self, text: str, brand_voice: dict, platform: str) -> str:
         """Rewrite one approved master draft natively for a platform.
@@ -739,6 +785,33 @@ _BURMESE_REF_WORDS = (
     "ဒုတိယ", "တတိယ", "စတုတ္ထ", "ပဉ္စမ", "ဆဋ္ဌမ", "သတ္တမ",
 )
 
+# City names the mock onboarding cross-check can recognise, in
+# Burmese canonical form with the spellings (Burmese or Latin) an
+# answer or an evidence text might carry. The mock's conflict
+# detection is deliberately this narrow: the buyers answer and the
+# evidence naming completely different cities is the contradiction
+# the spec calls out (owner says Yangon, the data says Mandalay).
+_CITY_FORMS = {
+    "ရန်ကုန်": ("ရန်ကုန်", "yangon"),
+    "မန္တလေး": ("မန္တလေး", "mandalay"),
+    "နေပြည်တော်": ("နေပြည်တော်", "naypyidaw"),
+    "ပဲခူး": ("ပဲခူး", "bago"),
+    "တောင်ကြီး": ("တောင်ကြီး", "taunggyi"),
+    "မော်လမြိုင်": ("မော်လမြိုင်", "mawlamyine"),
+    "ပုသိမ်": ("ပုသိမ်", "pathein"),
+    "ဘန်ကောက်": ("ဘန်ကောက်", "bangkok"),
+}
+
+
+def _cities_in(text: str) -> list[str]:
+    """The canonical city names a text mentions, in map order."""
+    low = (text or "").lower()
+    return [
+        name
+        for name, forms in _CITY_FORMS.items()
+        if any(form in low for form in forms)
+    ]
+
 
 class MockClient:
     """Canned structured outputs. Deterministic, offline, free."""
@@ -925,6 +998,35 @@ class MockClient:
         name = brand_voice.get("brand_name") or "the brand"
         return f"{level_name} for {name}: drafted from the brief ({brief[:80]})."
 
+    def check_onboarding_conflicts(self, answers: dict, evidence: str) -> list:
+        """Deterministic offline cross-check (the mock's grammar
+        for conflicts): the buyers answer and the evidence naming
+        completely disjoint sets of cities is a contradiction, and
+        comes back as one plain Burmese question naming both
+        sides. Overlap, a missing side, or empty evidence -> []."""
+        if not (evidence or "").strip():
+            return []
+        evidence_cities = _cities_in(evidence)
+        answer_cities = _cities_in(str(answers.get("buyers") or ""))
+        if not evidence_cities or not answer_cities:
+            return []
+        if set(evidence_cities) & set(answer_cities):
+            return []
+        ev = "၊ ".join(evidence_cities)
+        ans = "၊ ".join(answer_cities)
+        return [
+            {
+                "field": "buyers",
+                "question": (
+                    f"စစ်ဆေးစရာ တစ်ခု ရှိပါတယ် — page ရဲ့ data ထဲမှာ {ev} က "
+                    f"လူတွေ များတယ်လို့ တွေ့ရပေမယ့်၊ ဝယ်သူတွေ အကြောင်း "
+                    f"ပြောထားတာက {ans} ဖြစ်နေပါတယ်။ ဘယ်ဟာကို အခြေခံပြီး "
+                    f"target ထားရမလဲ — {ev} လား၊ {ans} လား၊ နှစ်ခုလုံးလား "
+                    "ပြောပြပါ။"
+                ),
+            }
+        ]
+
     def adapt_variant(self, text: str, brand_voice: dict, platform: str) -> str:
         from .checker import PLATFORM_LIMITS
 
@@ -976,6 +1078,7 @@ class MockClient:
           "schedule post 1 at 2026-11-10T19:00" -> schedule
           "report"                            -> report
           "status" / "how many"               -> status
+          "setup စမယ်" / "start setup"         -> start_setup
         Burmese references are recognised wherever the English
         ones are: the ordinals ပထမ / ပထမဆုံး / အရင်ဆုံး,
         ဒုတိယ, တတိယ, စတုတ္ထ, ပဉ္စမ, ဆဋ္ဌမ, သတ္တမ and
@@ -997,6 +1100,9 @@ class MockClient:
             "value": "",
             "brief": "",
         }
+        if "setup စမယ်" in text or low.strip() in ("setup", "start setup"):
+            out["intent"] = "start_setup"
+            return out
         stamp = re.search(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}", text)
         if stamp:
             out["datetime"] = stamp.group(0).replace(" ", "T")
