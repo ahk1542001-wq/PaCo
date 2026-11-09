@@ -6,3 +6,4 @@ __pycache__/
 data/usage_log.jsonl
 data-real-dev/
 data-real-*/
+.claude/settings.local.json
