@@ -225,8 +225,12 @@ def test_scene_plate_compositing(tmp_path):
     path = store.data_dir / updated["visual"]
     with Image.open(path) as img:
         assert img.size == TEMPLATES["poster"]
-        # Scrim: the very top row is exactly the brand primary.
-        assert img.convert("RGB").getpixel((30, 0)) == ASSETS["primary_rgb"]
+        # Scrim: the very top row is exactly the brand primary (the
+        # store's own palette, resolved from its brand voice).
+        from pageops.designer import resolve_assets
+
+        expected = resolve_assets(store.get_brand_voice())["primary_rgb"]
+        assert img.convert("RGB").getpixel((30, 0)) == expected
         # Below the scrim the plate shows through (burnt orange).
         pixel = img.convert("RGB").getpixel((540, 1100))
         assert pixel[0] > 120 and pixel[2] < 90
@@ -271,7 +275,10 @@ def test_concept_plate_compositing_and_record(tmp_path):
     with Image.open(path) as img:
         assert img.size == TEMPLATES["poster"]
         # The wordmark chip is solid primary in the top-left corner.
-        assert img.convert("RGB").getpixel((50, 45)) == ASSETS["primary_rgb"]
+        from pageops.designer import resolve_assets
+
+        expected = resolve_assets(store.get_brand_voice())["primary_rgb"]
+        assert img.convert("RGB").getpixel((50, 45)) == expected
 
 
 def test_banner_plate_compositing(tmp_path):

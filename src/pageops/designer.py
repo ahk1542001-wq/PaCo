@@ -15,9 +15,11 @@ never fails the row. The Designer checks its own work (template
 compliance: file, dimensions, brand colour present) before the row
 moves on.
 
-Brand assets are interim seed values from the brand-assets layer;
-when the owner's official FYF AI brand files land, they replace
-these in one swap (same keys, same consumers).
+Brand assets: the module-level ASSETS are the interim seed brand
+(FYF AI) and remain the fallback. A store's brand voice overrides
+them per render — brand_name becomes the wordmark and the hex codes
+in brand_colors become the palette (see resolve_assets) — so every
+page renders in its own identity.
 """
 
 from __future__ import annotations
@@ -55,6 +57,66 @@ ASSETS["background_rgb"] = tuple(
     int(ASSETS["background"][i : i + 2], 16) for i in (1, 3, 5)
 )
 ASSETS["ink_rgb"] = tuple(int(ASSETS["ink"][i : i + 2], 16) for i in (1, 3, 5))
+
+
+def _hex_to_rgb(value: str) -> tuple[int, int, int]:
+    return tuple(int(value[i : i + 2], 16) for i in (1, 3, 5))
+
+
+_HEX_RE = re.compile(r"#([0-9A-Fa-f]{6})\b")
+
+
+def resolve_assets(brand_voice: dict | None) -> dict:
+    """The effective brand assets for one render.
+
+    The module-level ASSETS are the interim seed brand. A store's
+    brand voice overrides them: brand_name replaces the wordmark,
+    and the hex codes in brand_colors replace the palette. Each
+    hex's role comes from the words that follow it in the
+    brand_colors text ("(main", "background", "accent") — the same
+    annotations the brand guidelines use; an unlabelled palette
+    falls back to position (first hex = primary, second = accent).
+    A "spark" accent is a sparing highlight, never the main accent.
+    When the primary is overridden the ink follows it (guideline:
+    body text is the primary colour). Anything the voice does not
+    specify keeps the seed value, so a voice with no identity keys
+    renders exactly as before.
+    """
+    assets = dict(ASSETS)
+    if not brand_voice:
+        return assets
+    name = str(brand_voice.get("brand_name") or "").strip()
+    if name:
+        assets["brand_name"] = name
+    text = str(brand_voice.get("brand_colors") or "")
+    matches = list(_HEX_RE.finditer(text))
+    if not matches:
+        return assets
+    labelled: list[tuple[str, str]] = []
+    for i, match in enumerate(matches):
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        labelled.append(("#" + match.group(1).upper(), text[match.end() : end].lower()))
+
+    def labelled_hex(word: str, *, skip: str | None = None) -> str | None:
+        for hexcode, label in labelled:
+            if word in label and (skip is None or skip not in label):
+                return hexcode
+        return None
+
+    primary = labelled_hex("main") or labelled[0][0]
+    background = labelled_hex("background")
+    accent = labelled_hex("accent", skip="spark") or labelled_hex("accent")
+    if accent is None and len(labelled) > 1:
+        accent = labelled[1][0]
+    assets["primary"] = primary
+    assets["ink"] = primary
+    if background:
+        assets["background"] = background
+    if accent:
+        assets["accent"] = accent
+    for role in ("primary", "accent", "background", "ink"):
+        assets[f"{role}_rgb"] = _hex_to_rgb(assets[role])
+    return assets
 
 TEMPLATES: dict[str, tuple[int, int]] = {
     "poster": (1080, 1350),
@@ -209,6 +271,7 @@ def _composite_character_badge(
     diameter: int | None = None,
     x: int | None = None,
     y: int | None = None,
+    accent_rgb: tuple[int, int, int] | None = None,
 ) -> bool:
     """Composite the reference image as a circular badge, in place.
 
@@ -248,7 +311,7 @@ def _composite_character_badge(
     draw = ImageDraw.Draw(img)
     draw.ellipse(
         [x - ring, y - ring, x + diameter + ring, y + diameter + ring],
-        fill=ASSETS["accent_rgb"],
+        fill=accent_rgb if accent_rgb is not None else ASSETS["accent_rgb"],
     )
     img.paste(badge, (x, y), mask)
     return True
@@ -281,7 +344,10 @@ def _apply_character(
             "reference": reference,
             "reason": "reference missing",
         }
-    if _composite_character_badge(img, resolved, diameter=diameter, x=x, y=y):
+    accent_rgb = resolve_assets(brand_voice)["accent_rgb"]
+    if _composite_character_badge(
+        img, resolved, diameter=diameter, x=x, y=y, accent_rgb=accent_rgb
+    ):
         return {"used": True, "requested": True, "reference": reference, "reason": ""}
     return {
         "used": False,
@@ -392,6 +458,7 @@ def _scene_treatment(
     white; the accent footer band closes the frame. All type is
     rendered here, in code, never by the image model.
     """
+    assets = resolve_assets(brand_voice)
     width, height = img.size
     max_width = text_width if text_width is not None else width - 120
     measure = ImageDraw.Draw(img)
@@ -413,9 +480,9 @@ def _scene_treatment(
     for y in range(height):
         alpha = int(255 * max(0.0, 1 - y / scrim_depth) ** 0.6) if y < scrim_depth else 0
         mask.putpixel((0, y), alpha)
-    img.paste(Image.new("RGB", (width, height), ASSETS["primary_rgb"]), (0, 0), mask.resize((width, height)))
+    img.paste(Image.new("RGB", (width, height), assets["primary_rgb"]), (0, 0), mask.resize((width, height)))
     draw = ImageDraw.Draw(img)
-    draw.text((60, 45), ASSETS["brand_name"], font=_font(64), fill=(255, 255, 255))
+    draw.text((60, 45), assets["brand_name"], font=_font(64), fill=(255, 255, 255))
     y = 240
     for line in headline_lines:
         draw.text((60, y), line, font=headline_font, fill=(255, 255, 255))
@@ -426,9 +493,9 @@ def _scene_treatment(
             break
         draw.text((60, y), line, font=angle_font, fill=(235, 240, 250))
         y += 60
-    draw.rectangle([0, height - 110, width, height], fill=ASSETS["accent_rgb"])
+    draw.rectangle([0, height - 110, width, height], fill=assets["accent_rgb"])
     footer = footer_text or f"{row.get('platform', '')} · {row.get('format', '')}".strip(" ·")
-    draw.text((60, height - 82), footer, font=_font(40), fill=ASSETS["ink_rgb"])
+    draw.text((60, height - 82), footer, font=_font(40), fill=assets["ink_rgb"])
 
 
 def _concept_treatment(
@@ -443,14 +510,15 @@ def _concept_treatment(
     draft's first line, fitted to a single line). The generated
     metaphor carries the frame; nothing else is added.
     """
+    assets = resolve_assets(brand_voice)
     draw = ImageDraw.Draw(img)
     wordmark_font = _font(48)
-    wordmark_width = draw.textlength(ASSETS["brand_name"], font=wordmark_font)
+    wordmark_width = draw.textlength(assets["brand_name"], font=wordmark_font)
     draw.rectangle(
-        [44, 38, 44 + wordmark_width + 48, 114], fill=ASSETS["primary_rgb"]
+        [44, 38, 44 + wordmark_width + 48, 114], fill=assets["primary_rgb"]
     )
     draw.text(
-        (68, 52), ASSETS["brand_name"], font=wordmark_font, fill=(255, 255, 255)
+        (68, 52), assets["brand_name"], font=wordmark_font, fill=(255, 255, 255)
     )
     points = split_points(row.get("draft", ""))
     headline = points[0] if points else row.get("topic", "")
@@ -490,11 +558,13 @@ def _render_plate_single(
     out.mkdir(parents=True, exist_ok=True)
     path = out / f"visual-{row.get('id', 'row')}-{template}.png"
     img.save(path)
+    assets = resolve_assets(brand_voice)
     manifest = {
         "template": template,
         "format": template,
         "size": (width, height),
-        "wordmark": ASSETS["brand_name"],
+        "wordmark": assets["brand_name"],
+        "primary": assets["primary"],
         "headline": row.get("topic", ""),
         "path": str(path),
         "character": character,
@@ -527,14 +597,15 @@ def render_visual(
         return _render_plate_single(row, out_dir, brand_voice, Path(plate_path), style, template)
     if template == "banner":
         return _render_banner(row, out_dir, brand_voice)
+    assets = resolve_assets(brand_voice)
     width, height = TEMPLATES[template]
-    img = Image.new("RGB", (width, height), ASSETS["background_rgb"])
+    img = Image.new("RGB", (width, height), assets["background_rgb"])
     draw = ImageDraw.Draw(img)
     # Top band in the brand primary colour, with the wordmark.
-    draw.rectangle([0, 0, width, 150], fill=ASSETS["primary_rgb"])
+    draw.rectangle([0, 0, width, 150], fill=assets["primary_rgb"])
     draw.text(
         (60, 45),
-        ASSETS["brand_name"],
+        assets["brand_name"],
         font=_font(64),
         fill=(255, 255, 255),
     )
@@ -542,7 +613,7 @@ def render_visual(
     headline_font, headline_lines = _fit(draw, row.get("topic", ""), 72, width - 120, 3)
     y = 240
     for line in headline_lines:
-        draw.text((60, y), line, font=headline_font, fill=ASSETS["ink_rgb"])
+        draw.text((60, y), line, font=headline_font, fill=assets["ink_rgb"])
         y += 92
     # Angle as the subline, fitted above the footer band.
     angle_font, angle_lines = _fit(draw, row.get("angle", ""), 44, width - 120, 6)
@@ -550,12 +621,12 @@ def render_visual(
     for line in angle_lines:
         if y > height - 190:
             break
-        draw.text((60, y), line, font=angle_font, fill=ASSETS["primary_rgb"])
+        draw.text((60, y), line, font=angle_font, fill=assets["primary_rgb"])
         y += 60
     # Footer band in the accent colour: platform + format.
-    draw.rectangle([0, height - 110, width, height], fill=ASSETS["accent_rgb"])
+    draw.rectangle([0, height - 110, width, height], fill=assets["accent_rgb"])
     footer = f"{row.get('platform', '')} · {row.get('format', '')}".strip(" ·")
-    draw.text((60, height - 82), footer, font=_font(40), fill=ASSETS["ink_rgb"])
+    draw.text((60, height - 82), footer, font=_font(40), fill=assets["ink_rgb"])
 
     # Brand character badge in the standard placement, only when
     # the row calls for it (see _apply_character).
@@ -573,7 +644,8 @@ def render_visual(
         "template": template,
         "format": template,
         "size": (width, height),
-        "wordmark": ASSETS["brand_name"],
+        "wordmark": assets["brand_name"],
+        "primary": assets["primary"],
         "headline": row.get("topic", ""),
         "path": str(path),
         "character": character,
@@ -591,13 +663,14 @@ def _render_banner(
     left, accent footer band. The character badge, when the row
     calls for it, sits larger on the right.
     """
+    assets = resolve_assets(brand_voice)
     width, height = TEMPLATES["banner"]
-    img = Image.new("RGB", (width, height), ASSETS["background_rgb"])
+    img = Image.new("RGB", (width, height), assets["background_rgb"])
     draw = ImageDraw.Draw(img)
-    draw.rectangle([0, 0, width, 150], fill=ASSETS["primary_rgb"])
+    draw.rectangle([0, 0, width, 150], fill=assets["primary_rgb"])
     draw.text(
         (60, 45),
-        ASSETS["brand_name"],
+        assets["brand_name"],
         font=_font(64),
         fill=(255, 255, 255),
     )
@@ -610,18 +683,18 @@ def _render_banner(
     headline_font, headline_lines = _fit(draw, row.get("topic", ""), 84, text_width, 3)
     y = 230
     for line in headline_lines:
-        draw.text((60, y), line, font=headline_font, fill=ASSETS["ink_rgb"])
+        draw.text((60, y), line, font=headline_font, fill=assets["ink_rgb"])
         y += 104
     angle_font, angle_lines = _fit(draw, row.get("angle", ""), 44, text_width, 5)
     y += 24
     for line in angle_lines:
         if y > height - 190:
             break
-        draw.text((60, y), line, font=angle_font, fill=ASSETS["primary_rgb"])
+        draw.text((60, y), line, font=angle_font, fill=assets["primary_rgb"])
         y += 60
-    draw.rectangle([0, height - 110, width, height], fill=ASSETS["accent_rgb"])
+    draw.rectangle([0, height - 110, width, height], fill=assets["accent_rgb"])
     footer = f"{row.get('platform', '')} · {row.get('format', '')}".strip(" ·")
-    draw.text((60, height - 82), footer, font=_font(40), fill=ASSETS["ink_rgb"])
+    draw.text((60, height - 82), footer, font=_font(40), fill=assets["ink_rgb"])
 
     character = _apply_character(
         img, row, brand_voice, diameter=diameter, x=badge_x, y=badge_y
@@ -635,7 +708,8 @@ def _render_banner(
         "template": "banner",
         "format": "banner",
         "size": (width, height),
-        "wordmark": ASSETS["brand_name"],
+        "wordmark": assets["brand_name"],
+        "primary": assets["primary"],
         "headline": row.get("topic", ""),
         "path": str(path),
         "character": character,
@@ -698,6 +772,7 @@ def _render_carousel(
     the row's style; the remaining slides keep the template
     rendering.
     """
+    assets = resolve_assets(brand_voice)
     width, height = TEMPLATES["carousel"]
     plan = carousel_slides(row, brand_voice)
     total = len(plan)
@@ -717,19 +792,19 @@ def _render_carousel(
             else:
                 _scene_treatment(img, row, brand_voice, footer_text=footer)
         else:
-            img = Image.new("RGB", (width, height), ASSETS["background_rgb"])
+            img = Image.new("RGB", (width, height), assets["background_rgb"])
             draw = ImageDraw.Draw(img)
-            draw.rectangle([0, 0, width, 150], fill=ASSETS["primary_rgb"])
+            draw.rectangle([0, 0, width, 150], fill=assets["primary_rgb"])
             draw.text(
                 (60, 45),
-                ASSETS["brand_name"],
+                assets["brand_name"],
                 font=_font(64),
                 fill=(255, 255, 255),
             )
             body_font, body_lines = _fit(draw, slide["text"], 64, width - 120, 8)
             y = 230
             for line in body_lines:
-                draw.text((60, y), line, font=body_font, fill=ASSETS["ink_rgb"])
+                draw.text((60, y), line, font=body_font, fill=assets["ink_rgb"])
                 y += 84
             if slide["kind"] == "hook" and row.get("angle"):
                 angle_font, angle_lines = _fit(draw, row["angle"], 44, width - 120, 4)
@@ -737,10 +812,10 @@ def _render_carousel(
                 for line in angle_lines:
                     if y > height - 420:
                         break
-                    draw.text((60, y), line, font=angle_font, fill=ASSETS["primary_rgb"])
+                    draw.text((60, y), line, font=angle_font, fill=assets["primary_rgb"])
                     y += 60
-            draw.rectangle([0, height - 110, width, height], fill=ASSETS["accent_rgb"])
-            draw.text((60, height - 82), footer, font=_font(40), fill=ASSETS["ink_rgb"])
+            draw.rectangle([0, height - 110, width, height], fill=assets["accent_rgb"])
+            draw.text((60, height - 82), footer, font=_font(40), fill=assets["ink_rgb"])
         if slide["badge"]:
             diameter, badge_x, badge_y = _badge_placement(width, height)
             result = _apply_character(
@@ -755,7 +830,8 @@ def _render_carousel(
         "template": "carousel",
         "format": "carousel",
         "size": (width, height),
-        "wordmark": ASSETS["brand_name"],
+        "wordmark": assets["brand_name"],
+        "primary": assets["primary"],
         "headline": row.get("topic", ""),
         "path": str(paths[0]),
         "slides": [str(p) for p in paths],
@@ -790,14 +866,15 @@ def build_character_sheet(brand_voice: dict | None, out_path: Path | str) -> Pat
     except OSError as exc:
         raise RuntimeError(f"character sheet: reference unreadable ({exc})") from exc
 
+    assets = resolve_assets(brand_voice)
     width, height = CHARACTER_SHEET_SIZE
-    sheet = Image.new("RGB", (width, height), ASSETS["background_rgb"])
+    sheet = Image.new("RGB", (width, height), assets["background_rgb"])
     draw = ImageDraw.Draw(sheet)
-    draw.rectangle([0, 0, width, 150], fill=ASSETS["primary_rgb"])
+    draw.rectangle([0, 0, width, 150], fill=assets["primary_rgb"])
     name = (brand_voice or {}).get("character_name", "") or "PaCo"
     draw.text(
         (60, 45),
-        f"{ASSETS['brand_name']} · {name} character sheet",
+        f"{assets['brand_name']} · {name} character sheet",
         font=_font(56),
         fill=(255, 255, 255),
     )
@@ -816,16 +893,16 @@ def build_character_sheet(brand_voice: dict | None, out_path: Path | str) -> Pat
         )
     )
     panels.append(("Face zoom", ImageOps.fit(face.convert("RGB"), (panel_size, panel_size))))
-    badge_panel = Image.new("RGB", (panel_size, panel_size), ASSETS["background_rgb"])
+    badge_panel = Image.new("RGB", (panel_size, panel_size), assets["background_rgb"])
     _composite_character_badge(
-        badge_panel, resolved, diameter=440, x=40, y=40
+        badge_panel, resolved, diameter=440, x=40, y=40, accent_rgb=assets["accent_rgb"]
     )
     panels.append(("Badge", badge_panel))
     for i, (label, panel) in enumerate(panels):
         px = 60 + i * (panel_size + 60)
         draw.rectangle(
             [px - 3, panel_y - 3, px + panel_size + 3, panel_y + panel_size + 3],
-            outline=ASSETS["primary_rgb"],
+            outline=assets["primary_rgb"],
             width=3,
         )
         sheet.paste(panel, (px, panel_y))
@@ -833,7 +910,7 @@ def build_character_sheet(brand_voice: dict | None, out_path: Path | str) -> Pat
             (px, panel_y + panel_size + 28),
             label,
             font=_font(44),
-            fill=ASSETS["ink_rgb"],
+            fill=assets["ink_rgb"],
         )
 
     rules = (brand_voice or {}).get("character_rules", "")
@@ -841,7 +918,7 @@ def build_character_sheet(brand_voice: dict | None, out_path: Path | str) -> Pat
         rules_font, rules_lines = _fit(draw, rules, 36, width - 120, 3)
         y = 950
         for line in rules_lines:
-            draw.text((60, y), line, font=rules_font, fill=ASSETS["primary_rgb"])
+            draw.text((60, y), line, font=rules_font, fill=assets["primary_rgb"])
             y += 50
 
     out = Path(out_path)
@@ -861,8 +938,10 @@ def verify_visual(path: Path | str, manifest: dict) -> tuple[bool, str]:
         if path.stat().st_size < 5_000:
             return False, f"visual file suspiciously small: {path.stat().st_size} bytes"
         rgb = img.convert("RGB")
+        primary_hex = manifest.get("primary")
+        primary_rgb = _hex_to_rgb(primary_hex) if primary_hex else ASSETS["primary_rgb"]
         found = any(
-            rgb.getpixel((x, y)) == ASSETS["primary_rgb"]
+            rgb.getpixel((x, y)) == primary_rgb
             for x in range(0, img.size[0], 60)
             for y in range(0, 120, 10)
         )
