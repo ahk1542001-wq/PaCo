@@ -149,12 +149,13 @@ BACKFILL_KEYS: tuple[str, ...] = (
 class Store:
     """Tiny CSV store. One instance points at one data directory."""
 
-    def __init__(self, data_dir: Path | str | None = None):
+    def __init__(self, data_dir: Path | str | None = None, *, blank: bool = False):
         if data_dir is None:
             from .config import DEFAULT_DATA_DIR
 
             data_dir = DEFAULT_DATA_DIR
         self.data_dir = Path(data_dir)
+        self._blank = blank
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self._ensure_files()
 
@@ -176,17 +177,38 @@ class Store:
                     header = next(csv.reader(fh), [])
                 if header != fields:
                     self.write_dataset(name, self.read_dataset(name))
-        # Seed the brand voice once, only if it is still empty.
+        self._seed_brand_voice()
+
+    def _seed_brand_voice(self) -> None:
+        """Seed the brand voice once, then backfill later keys.
+
+        A normal store seeds the demo brand (BRAND_VOICE_SEED) and
+        backfills missing BACKFILL_KEYS from it. A blank store — a
+        real new page — gets the same keys with EMPTY values, so no
+        other brand's identity can leak into it; and because every
+        key is present from the start, the backfill can never fill
+        them from the demo seed afterwards either. Per-brand data
+        stays per-brand (owner rule, 2026-11-10, after the FYF seed
+        leaked into the AI Premium Myanmar 2.0 store three times).
+        """
+        seed = "" if self._blank else None
         if not self.read_dataset("brand_voice"):
             for key, value in BRAND_VOICE_SEED.items():
-                self.append_row("brand_voice", {"key": key, "value": value})
+                self.append_row(
+                    "brand_voice",
+                    {"key": key, "value": value if seed is None else seed},
+                )
         # Backfill ONLY the keys in BACKFILL_KEYS on a store whose
         # brand_voice predates them (see the note on BACKFILL_KEYS).
         existing_keys = {row["key"] for row in self.read_dataset("brand_voice")}
         for key in BACKFILL_KEYS:
             if key not in existing_keys:
                 self.append_row(
-                    "brand_voice", {"key": key, "value": BRAND_VOICE_SEED[key]}
+                    "brand_voice",
+                    {
+                        "key": key,
+                        "value": BRAND_VOICE_SEED[key] if seed is None else seed,
+                    },
                 )
 
     def read_dataset(self, dataset: str) -> list[dict[str, str]]:
@@ -349,15 +371,7 @@ class SqliteStore(Store):
     def _ensure_files(self) -> None:
         # No CSV files to create or migrate: seed + backfill only,
         # under exactly the parent class's rules.
-        if not self.read_dataset("brand_voice"):
-            for key, value in BRAND_VOICE_SEED.items():
-                self.append_row("brand_voice", {"key": key, "value": value})
-        existing_keys = {row["key"] for row in self.read_dataset("brand_voice")}
-        for key in BACKFILL_KEYS:
-            if key not in existing_keys:
-                self.append_row(
-                    "brand_voice", {"key": key, "value": BRAND_VOICE_SEED[key]}
-                )
+        self._seed_brand_voice()
 
     def read_dataset(self, dataset: str) -> list[dict[str, str]]:
         if dataset not in DATASETS:
@@ -421,15 +435,17 @@ class SqliteStore(Store):
         return clean
 
 
-def open_store(data_dir: Path | str | None = None) -> Store:
+def open_store(data_dir: Path | str | None = None, *, blank: bool = False) -> Store:
     """Open the store on the backend the environment selects.
 
     PAGEOPS_STORE_BACKEND=sqlite selects SqliteStore; anything else
     keeps the CSV store. Entry points (dashboard, cycle runner) go
     through here so the backend is one switch, not a code change.
+    blank=True creates a fresh store with an empty brand voice (see
+    Store._seed_brand_voice).
     """
     import os
 
     if os.environ.get("PAGEOPS_STORE_BACKEND", "").strip().lower() == "sqlite":
-        return SqliteStore(data_dir)
-    return Store(data_dir)
+        return SqliteStore(data_dir, blank=blank)
+    return Store(data_dir, blank=blank)
