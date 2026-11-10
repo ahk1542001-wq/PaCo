@@ -403,7 +403,13 @@ def direct_plate(
     never fails the row.
     """
     style = visual_style_for(row)
-    concept: dict = {"style": style, "concept": "", "prompt": "", "no_exceptions": ""}
+    concept: dict = {
+        "style": style,
+        "concept": "",
+        "prompt": "",
+        "no_exceptions": "",
+        "headline": "",
+    }
     try:
         directed = director.direct_visual(
             row, row.get("draft", ""), brand_voice or {}, style
@@ -415,6 +421,7 @@ def direct_plate(
             "concept": str(directed.get("concept", "")),
             "prompt": str(directed.get("prompt", "")),
             "no_exceptions": str(directed.get("no_exceptions", "")),
+            "headline": str(directed.get("headline", "")),
         }
     except Exception as exc:
         return concept, {"used": False, "reason": f"direction failed: {exc}"}, None

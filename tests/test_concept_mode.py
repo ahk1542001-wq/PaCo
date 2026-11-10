@@ -633,3 +633,20 @@ def test_concept_treatment_without_headline_stamps_nothing():
     # No director headline -> no scrim, no stamped draft sentence:
     # the headline zone keeps the plate's own pixels.
     assert rgb.getpixel((880, 205)) == (235, 235, 235)
+
+
+def test_direct_plate_carries_the_director_headline(tmp_path):
+    # Regression (2026-11-10): direct_plate rebuilt the concept
+    # record field by field and dropped "headline", so every live
+    # concept poster rendered without its directed headline even
+    # though the director had written one.
+    store, row = _store_row(tmp_path, CONCEPT_ROW)
+    concept, plate, plate_path = direct_plate(
+        row,
+        store.get_brand_voice(),
+        tmp_path / "d",
+        MockClient(),
+        _FakeImageClient(_plate_bytes()),
+    )
+    assert plate["used"] is True
+    assert concept["headline"]
