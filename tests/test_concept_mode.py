@@ -134,7 +134,7 @@ def test_mock_direct_visual_is_deterministic_and_complete():
     for header in ("Concept", "Composition", "Subject", "Setting", "Camera and style", "Constraints"):
         assert header in concept["prompt"]
     constraints = concept["prompt"].split("Constraints:")[1]
-    for required in ("no text", "no letters", "no logos", "no watermark", "clean negative space"):
+    for required in ("no text", "no letters", "no logos", "no watermark", "headline zone"):
         assert required in constraints
     assert concept["no_exceptions"].startswith("No exceptions")
     assert "No exceptions" in constraints  # the clause rides inside the prompt too
@@ -492,3 +492,51 @@ def test_meta_concept_instruction_demands_legibility(tmp_path, monkeypatch):
     sent = " ".join(m["content"] for m in seen["messages"])
     assert "instantly recognisable" in sent
     assert "never as abstract orbs" in sent
+
+
+# -- Arranged headline (director's line + reserved zone) --------------------
+
+
+def test_meta_concept_direction_returns_headline_and_demands_zone(tmp_path, monkeypatch):
+    client = MetaModelClient(api_key="<redacted>", usage_log=tmp_path / "u.jsonl")
+    captured = {}
+
+    def fake_chat(messages, model=None, **kwargs):
+        captured["messages"] = messages
+        reply = json.dumps(
+            {
+                "concept": "Chat bubbles rain; one umbrella keeps the shop dry.",
+                "prompt": CONCEPT_PROMPT,
+                "no_exceptions": "No exceptions: every bubble lands on the umbrella.",
+                "headline": "Every question answered",
+            }
+        )
+        return {"choices": [{"message": {"content": reply}}]}
+
+    monkeypatch.setattr(client, "chat", fake_chat)
+    result = client.direct_visual(CONCEPT_ROW, "draft", {}, "concept")
+    assert result["headline"] == "Every question answered"
+    instruction = captured["messages"][1]["content"]
+    assert "headline zone" in instruction
+    assert "headline:" in instruction
+
+
+def test_mock_concept_direction_has_headline():
+    result = MockClient().direct_visual(CONCEPT_ROW, "draft", {}, "concept")
+    assert result["headline"]
+
+
+def test_concept_treatment_scrims_the_headline_zone():
+    from pageops.designer import _concept_treatment
+
+    img = Image.new("RGB", (1080, 1350), (235, 235, 235))
+    row = dict(CONCEPT_ROW, draft="A long opening sentence that rambles on. More.")
+    _concept_treatment(img, row, {"brand_name": "Test Brand"}, headline="Short hook")
+    rgb = img.convert("RGB")
+    # Inside the headline zone the bright plate is pulled toward the
+    # brand primary by the gradient scrim (the zone is grown, and the
+    # headline no longer fights the bare image)...
+    zone = rgb.getpixel((880, 205))
+    assert sum(zone) < sum((235, 235, 235)) - 120
+    # ...while the metaphor area below the zone is untouched.
+    assert rgb.getpixel((540, 1200)) == (235, 235, 235)
