@@ -183,22 +183,9 @@ def generate_week(
         # every visual, so they pass the humanising pass before
         # they are stored. One call carries both lines; the line
         # structure the pass promises is what maps them back.
-        topic = post.get("topic", "")
-        angle = post.get("angle", "")
-        plan_error = ""
-        parts = [p for p in (topic, angle) if p and p.strip()]
-        if parts:
-            combined, plan_error = humanize_text(client, "\n".join(parts), brand)
-            lines = [ln.strip() for ln in combined.splitlines() if ln.strip()]
-            if not plan_error and len(lines) == len(parts):
-                if len(parts) == 2:
-                    topic, angle = lines
-                elif topic:
-                    topic = lines[0]
-                else:
-                    angle = lines[0]
-            elif not plan_error:
-                plan_error = "humaniser changed the plan text structure"
+        topic, angle, plan_error = _humanize_plan_lines(
+            client, brand, post.get("topic", ""), post.get("angle", "")
+        )
         rows.append(
             store.add_plan_row(
                 {
@@ -721,6 +708,76 @@ def run_brief(
     ]
     store.update_row("plan", brief_row["id"], {"status": "planned"})
     return drafted
+
+
+def _humanize_plan_lines(client, brand: dict, topic: str, angle: str):
+    """Humanise a plan row's topic and angle together.
+
+    The topic and angle are model-written (or owner-given) lines that
+    become the headline and subline on every visual, so they pass the
+    humanising pass before they are stored. One call carries both
+    lines; the line structure the pass promises is what maps them
+    back. Returns (topic, angle, error).
+    """
+    parts = [p for p in (topic, angle) if p and p.strip()]
+    if not parts:
+        return topic, angle, ""
+    combined, plan_error = humanize_text(client, "\n".join(parts), brand)
+    lines = [ln.strip() for ln in combined.splitlines() if ln.strip()]
+    if not plan_error and len(lines) == len(parts):
+        if len(parts) == 2:
+            topic, angle = lines
+        elif topic:
+            topic = lines[0]
+        else:
+            angle = lines[0]
+    elif not plan_error:
+        plan_error = "humaniser changed the plan text structure"
+    return topic, angle, plan_error
+
+
+def process_single(
+    store: Store,
+    client,
+    ask_text: str,
+    topic: str = "",
+    angle: str = "",
+    platform: str = "facebook",
+    visual_style: str = "",
+    judge=None,
+    image_client=None,
+) -> dict:
+    """Produce exactly ONE post: the one the owner asked for.
+
+    The owner's ask replaces the Strategist's week plan. No week is
+    generated and no other post is drafted: the ask is stored as a
+    brief plus a single plan row, and that row runs the same draft,
+    humanise, visual, check and judge path as a week item, ending at
+    the owner's approval gate like everything else.
+    """
+    intake_brief(store, ask_text)
+    brand = store.get_brand_voice()
+    topic = topic.strip() or ask_text.strip().splitlines()[0].strip()
+    topic, angle, plan_error = _humanize_plan_lines(client, brand, topic, angle)
+    row = store.add_plan_row(
+        {
+            "date": "",
+            "platform": platform,
+            "topic": topic,
+            "angle": angle,
+            "brief_check": (
+                f"[HUMANIZER FALLBACK] plan text pass unavailable ({plan_error})"
+                if plan_error
+                else ""
+            ),
+            "format": "",
+            "character": "",
+            "visual_style": visual_style,
+            "status": "planned",
+            "brief": ask_text,
+        }
+    )
+    return draft_and_check(store, client, row, judge=judge, image_client=image_client)
 
 
 def process_week(
