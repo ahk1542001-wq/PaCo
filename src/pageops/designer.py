@@ -504,13 +504,16 @@ def product_logo_for(row: dict, brand_voice: dict | None) -> tuple[str, str] | N
     The brand key ``product_logos`` holds "slug: relative/path.png"
     pairs (';'-separated, paths relative to the store's visuals
     folder). A row matches a product when the slug appears in its
-    topic or draft. Returns (slug, relative path) or None — a post
-    that names no known product gets no badge.
+    topic or angle — the plan's subject fields. The draft is NOT
+    matched: a passing mention in a caption (an intro post listing
+    what the shop sells) is not the post's product, and badging it
+    would mislabel the post. Returns (slug, relative path) or
+    None — a post about no known product gets no badge.
     """
     raw = str((brand_voice or {}).get("product_logos") or "").strip()
     if not raw:
         return None
-    haystack = f"{row.get('topic', '')} {row.get('draft', '')}".lower()
+    haystack = f"{row.get('topic', '')} {row.get('angle', '')}".lower()
     for pair in raw.split(";"):
         slug, sep, rel = pair.partition(":")
         slug, rel = slug.strip().lower(), rel.strip()
