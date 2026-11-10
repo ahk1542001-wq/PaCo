@@ -502,15 +502,41 @@ def _concept_treatment(
     img: Image.Image,
     row: dict,
     brand_voice: dict | None = None,
+    headline: str | None = None,
 ) -> None:
-    """Concept style over a plate: minimal typography.
+    """Concept style over a plate: one metaphor, arranged type.
 
     Only two elements: a small brand wordmark on a primary-colour
-    chip in the top-left corner, and a one-line headline (the
-    draft's first line, fitted to a single line). The generated
-    metaphor carries the frame; nothing else is added.
+    chip in the top-left corner, and the headline. The headline is
+    ARRANGED into the frame, never just stamped on it: direction
+    reserves the top band of the plate as a dark, empty headline
+    zone, a soft gradient scrim in the brand primary grows that
+    zone out of the image itself (no hard band, no pasted panel),
+    and the headline — the director's short line when one was
+    written, else the draft's first point — is fitted into the
+    zone over up to two lines.
     """
     assets = resolve_assets(brand_voice)
+    draw = ImageDraw.Draw(img)
+    text = (headline or "").strip()
+    if not text:
+        points = split_points(row.get("draft", ""))
+        text = points[0] if points else row.get("topic", "")
+    headline_font, headline_lines = _fit(draw, text, 80, img.width - 120, 2)
+    # The scrim is sized to the block it carries (the scene
+    # treatment's rule: type never runs off its ground), then fades
+    # out well above the metaphor.
+    block_bottom = 150 + 92 * len(headline_lines) + 46
+    depth = min(img.height, block_bottom + 90)
+    mask = Image.new("L", (1, img.height), 0)
+    for y in range(img.height):
+        alpha = int(170 * max(0.0, 1 - y / depth) ** 0.7) if y < depth else 0
+        mask.putpixel((0, y), alpha)
+    img.paste(
+        Image.new("RGB", img.size, assets["primary_rgb"]),
+        (0, 0),
+        mask.resize(img.size),
+    )
     draw = ImageDraw.Draw(img)
     wordmark_font = _font(48)
     wordmark_width = draw.textlength(assets["brand_name"], font=wordmark_font)
@@ -520,12 +546,11 @@ def _concept_treatment(
     draw.text(
         (68, 52), assets["brand_name"], font=wordmark_font, fill=(255, 255, 255)
     )
-    points = split_points(row.get("draft", ""))
-    headline = points[0] if points else row.get("topic", "")
-    headline_font, headline_lines = _fit(draw, headline, 76, img.width - 120, 1)
-    line = headline_lines[0] if headline_lines else ""
-    draw.text((63, 153), line, font=headline_font, fill=(10, 18, 38))
-    draw.text((60, 150), line, font=headline_font, fill=(255, 255, 255))
+    y = 150
+    for line in headline_lines:
+        draw.text((63, y + 3), line, font=headline_font, fill=(10, 18, 38))
+        draw.text((60, y), line, font=headline_font, fill=(255, 255, 255))
+        y += 92
 
 
 def _render_plate_single(
@@ -535,12 +560,13 @@ def _render_plate_single(
     plate_path: Path,
     style: str,
     template: str,
+    headline: str | None = None,
 ) -> tuple[Path, dict]:
     """One still visual rendered over a generated plate."""
     width, height = TEMPLATES[template]
     img = _plate_base(plate_path, (width, height))
     if style == "concept":
-        _concept_treatment(img, row, brand_voice)
+        _concept_treatment(img, row, brand_voice, headline=headline)
         diameter, badge_x, badge_y = _badge_placement(width, height)
     else:
         if template == "banner":
@@ -580,6 +606,7 @@ def render_visual(
     brand_voice: dict | None = None,
     plate_path: Path | str | None = None,
     style: str = "scene",
+    headline: str | None = None,
 ) -> tuple[Path, dict]:
     """Render the row's visual. Deterministic per input.
 
@@ -592,9 +619,13 @@ def render_visual(
     """
     template = template_for(row)
     if template == "carousel":
-        return _render_carousel(row, out_dir, brand_voice, plate_path=plate_path, style=style)
+        return _render_carousel(
+            row, out_dir, brand_voice, plate_path=plate_path, style=style, headline=headline
+        )
     if plate_path is not None:
-        return _render_plate_single(row, out_dir, brand_voice, Path(plate_path), style, template)
+        return _render_plate_single(
+            row, out_dir, brand_voice, Path(plate_path), style, template, headline=headline
+        )
     if template == "banner":
         return _render_banner(row, out_dir, brand_voice)
     assets = resolve_assets(brand_voice)
@@ -762,6 +793,7 @@ def _render_carousel(
     brand_voice: dict | None = None,
     plate_path: Path | None = None,
     style: str = "scene",
+    headline: str | None = None,
 ) -> tuple[Path, dict]:
     """Render a carousel slide set (1080x1080 per slide).
 
@@ -788,7 +820,7 @@ def _render_carousel(
         if index == 1 and plate_path is not None:
             img = _plate_base(plate_path, (width, height))
             if style == "concept":
-                _concept_treatment(img, row, brand_voice)
+                _concept_treatment(img, row, brand_voice, headline=headline)
             else:
                 _scene_treatment(img, row, brand_voice, footer_text=footer)
         else:
@@ -982,6 +1014,7 @@ def produce_visual(store, row: dict, image_client=None, director=None) -> dict:
             row, brand_voice, out_dir, director, image_client
         )
     style = visual_style_for(row)
+    headline = (concept or {}).get("headline") or None
     if plate_path is None:
         # The plain template call, exactly the shape it has always
         # had: the plate kwargs only enter the call when a plate
@@ -990,7 +1023,12 @@ def produce_visual(store, row: dict, image_client=None, director=None) -> dict:
     else:
         try:
             path, manifest = render_visual(
-                row, out_dir, brand_voice=brand_voice, plate_path=plate_path, style=style
+                row,
+                out_dir,
+                brand_voice=brand_voice,
+                plate_path=plate_path,
+                style=style,
+                headline=headline,
             )
         except Exception as exc:
             plate = {"used": False, "reason": f"plate rendering failed: {exc}"}

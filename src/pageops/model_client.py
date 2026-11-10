@@ -221,10 +221,13 @@ class MetaModelClient:
         if style == "concept":
             instruction = (
                 "Direct one still visual in the concept style (conceptual advertising). "
-                "Reply with JSON only: {concept, prompt, no_exceptions}. "
+                "Reply with JSON only: {concept, prompt, no_exceptions, headline}. "
                 "concept: one line naming the single visual metaphor that carries the "
                 "post's one benefit or pain message. Metaphor first: one object, one "
                 "scene, one idea. "
+                "headline: the poster headline, written by you: ONE short line in "
+                "the post's language (at most eight words), the post's hook as a "
+                "designer would set it — never a full sentence copied from the draft. "
                 "Legibility: a stranger must get the metaphor in one second, so every "
                 "element of the metaphor must be drawn as the literal, instantly "
                 "recognisable thing it represents: customer messages as envelopes or "
@@ -238,8 +241,14 @@ class MetaModelClient:
                 "prompt: write the image prompt as a professional conceptual-ad prompt "
                 "in exactly these sections, each labelled on its own line: Concept / "
                 "Composition / Subject / Setting / Camera and style / Constraints. "
+                "The Composition section must place the metaphor in the lower "
+                "two-thirds of the frame and keep the top band of the frame (the "
+                "top 18 percent) dark, plain and completely empty: that band is "
+                "the headline zone where the headline will be set, and no part of "
+                "the metaphor, no rim, edge or bright glow may enter it. "
                 "The Constraints section must include: no text, no letters, no logos, "
-                "no watermark, clean negative space for a headline, and a No exceptions "
+                "no watermark, the top 18 percent of the frame dark and empty as "
+                "the headline zone, and a No exceptions "
                 "clause that repeats the no_exceptions line: if any element escapes "
                 "the protective action, the image contradicts the claim. "
                 f"Brand colours: {colours}.{character}"
@@ -296,6 +305,7 @@ class MetaModelClient:
         concept = str(data.get("concept") or "").strip()
         prompt = str(data.get("prompt") or "").strip()
         no_exceptions = str(data.get("no_exceptions") or "").strip()
+        headline = str(data.get("headline") or "").strip()
         if not concept or not prompt:
             raise ValueError("direct_visual: reply missing concept or prompt")
         lowered = prompt.lower()
@@ -326,7 +336,12 @@ class MetaModelClient:
                 raise ValueError(
                     "direct_visual: concept prompt missing the No exceptions clause"
                 )
-        return {"concept": concept, "prompt": prompt, "no_exceptions": no_exceptions}
+        return {
+            "concept": concept,
+            "prompt": prompt,
+            "no_exceptions": no_exceptions,
+            "headline": headline,
+        }
 
     def generate_draft(self, plan_item: dict, brand_voice: dict, context: str = "") -> dict:
         instruction = (
@@ -1001,17 +1016,25 @@ class MockClient:
             prompt = (
                 f"Concept: one visual metaphor carrying the message of \"{topic}\" "
                 f"for {brand}, in the brand colours ({colours}).\n"
-                "Composition: one bold central object, generous clean negative "
-                "space in the top third for a headline.\n"
+                "Composition: one bold central object in the lower two-thirds; "
+                "the top band of the frame (the top 18 percent) stays dark, "
+                "plain and completely empty as the headline zone.\n"
                 "Subject: the metaphor object only, rendered large and sharp.\n"
                 "Setting: a plain studio setting in the brand colours, nothing "
                 "competing with the subject.\n"
                 "Camera and style: straight-on product photography, soft even "
                 "light, high detail.\n"
-                "Constraints: no text, no letters, no logos, no watermark, clean "
-                f"negative space for a headline. {no_exceptions}"
+                "Constraints: no text, no letters, no logos, no watermark, the "
+                "top 18 percent of the frame dark and empty as the headline "
+                f"zone. {no_exceptions}"
             )
-            return {"concept": concept, "prompt": prompt, "no_exceptions": no_exceptions}
+            headline = " ".join(topic.split()[:6])
+            return {
+                "concept": concept,
+                "prompt": prompt,
+                "no_exceptions": no_exceptions,
+                "headline": headline,
+            }
         character = ""
         if str(plan_item.get("character") or "").strip().lower() == "yes":
             character = (
@@ -1025,7 +1048,7 @@ class MockClient:
             "evening light, clean calm space in the top third of the frame for a "
             "headline. No text, no letters, no logos, no watermark."
         )
-        return {"concept": concept, "prompt": prompt, "no_exceptions": ""}
+        return {"concept": concept, "prompt": prompt, "no_exceptions": "", "headline": ""}
 
     def narrate(self, stats: dict, brand_voice: dict) -> str:
         totals = stats.get("totals", {})
