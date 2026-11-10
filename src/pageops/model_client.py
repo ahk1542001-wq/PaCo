@@ -226,7 +226,7 @@ class MetaModelClient:
                 "post's one benefit or pain message. Metaphor first: one object, one "
                 "scene, one idea. "
                 "headline: the poster headline, written by you: ONE short line in "
-                "the post's language (at most eight words AND at most 40 characters), "
+                "the post's language (at most eight words AND at most 56 characters), "
                 "the post's hook as a designer would set it — never a full sentence "
                 "copied from the draft. "
                 "Legibility: a stranger must get the metaphor in one second, so every "
@@ -344,7 +344,7 @@ class MetaModelClient:
             # corrective retry before it is given up on (the caller
             # then falls back to the draft's first point).
             headline = headline.rstrip("၊, ")
-            if len(headline) > 48:
+            if len(headline) > 64:
                 retry = self.chat(
                     messages
                     + [
@@ -353,10 +353,10 @@ class MetaModelClient:
                             "role": "user",
                             "content": (
                                 f"That headline was {len(headline)} characters — too "
-                                "long to set on a poster (the limit is 48). "
+                                "long to set on a poster (the limit is 64). "
                                 'Reply with JSON only: {"headline": "..."} — one short '
                                 "headline in the post's language, at most eight words "
-                                "and at most 40 characters."
+                                "and at most 56 characters."
                             ),
                         },
                     ],
@@ -373,7 +373,7 @@ class MetaModelClient:
                     fixed = str(parsed.get("headline") or "").strip()
                 except (json.JSONDecodeError, AttributeError):
                     fixed = retry_text.strip('"')
-                headline = fixed.rstrip("၊, ") if 0 < len(fixed) <= 48 else ""
+                headline = fixed.rstrip("၊, ") if 0 < len(fixed) <= 64 else ""
         return {
             "concept": concept,
             "prompt": prompt,

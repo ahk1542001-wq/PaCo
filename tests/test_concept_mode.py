@@ -593,6 +593,13 @@ def test_product_logo_matching():
     assert product_logo_for(row, voice) == ("canva", "product-logos/canva.png")
     other = {"topic": "The questions we answer straight", "draft": "No product here."}
     assert product_logo_for(other, voice) is None
+    # A passing mention in the draft alone is NOT the post's product:
+    mention = {
+        "topic": "Introducing the page",
+        "angle": "What this page is",
+        "draft": "We sell Canva, CapCut and more.",
+    }
+    assert product_logo_for(mention, voice) is None
     assert product_logo_for(row, {}) is None
     assert product_logo_for(row, None) is None
 
