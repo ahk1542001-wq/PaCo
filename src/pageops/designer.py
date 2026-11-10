@@ -540,8 +540,13 @@ def _concept_treatment(
     draw = ImageDraw.Draw(img)
     wordmark_font = _font(48)
     wordmark_width = draw.textlength(assets["brand_name"], font=wordmark_font)
+    # The accent outline keeps the chip readable as a designed
+    # element when the plate's own top band is already dark.
     draw.rectangle(
-        [44, 38, 44 + wordmark_width + 48, 114], fill=assets["primary_rgb"]
+        [44, 38, 44 + wordmark_width + 48, 114],
+        fill=assets["primary_rgb"],
+        outline=assets["accent_rgb"],
+        width=3,
     )
     draw.text(
         (68, 52), assets["brand_name"], font=wordmark_font, fill=(255, 255, 255)
