@@ -580,3 +580,49 @@ def test_meta_concept_headline_trailing_comma_is_stripped(tmp_path, monkeypatch)
     client = _meta_client(tmp_path, monkeypatch, reply)
     result = client.direct_visual(CONCEPT_ROW, "draft", {}, "concept")
     assert result["headline"] == "Short hook"
+
+
+# -- Product logo badge (selling posts show WHICH product) -------------------
+
+
+def test_product_logo_matching():
+    from pageops.designer import product_logo_for
+
+    voice = {"product_logos": "canva: product-logos/canva.png; capcut: product-logos/capcut.png"}
+    row = {"topic": "Canva Education Pro, introduced", "draft": "Price inside."}
+    assert product_logo_for(row, voice) == ("canva", "product-logos/canva.png")
+    other = {"topic": "The questions we answer straight", "draft": "No product here."}
+    assert product_logo_for(other, voice) is None
+    assert product_logo_for(row, {}) is None
+    assert product_logo_for(row, None) is None
+
+
+def test_concept_treatment_badges_the_product_logo(tmp_path):
+    from pageops.designer import _concept_treatment
+
+    logo = Image.new("RGBA", (200, 100), (220, 30, 30, 255))
+    logo_path = tmp_path / "canva.png"
+    logo.save(logo_path)
+    img = Image.new("RGB", (1080, 1350), (16, 26, 48))
+    row = dict(CONCEPT_ROW, draft="A draft about Canva.")
+    _concept_treatment(
+        img, row, {"brand_name": "Test Brand"}, headline="Short hook", product_logo=logo_path
+    )
+    rgb = img.convert("RGB")
+    # Badge geometry: white padding is visible top-right...
+    assert rgb.getpixel((890, 80)) == (255, 255, 255)
+    # ...and the logo itself sits inside it (red at its centre).
+    r, g, b = rgb.getpixel((960, 80))
+    assert r > 150 and g < 90 and b < 90
+
+
+def test_concept_treatment_without_headline_stamps_nothing():
+    from pageops.designer import _concept_treatment
+
+    img = Image.new("RGB", (1080, 1350), (235, 235, 235))
+    row = dict(CONCEPT_ROW, draft="A long opening sentence that rambles on. More.")
+    _concept_treatment(img, row, {"brand_name": "Test Brand"})
+    rgb = img.convert("RGB")
+    # No director headline -> no scrim, no stamped draft sentence:
+    # the headline zone keeps the plate's own pixels.
+    assert rgb.getpixel((880, 205)) == (235, 235, 235)

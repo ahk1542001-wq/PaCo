@@ -498,45 +498,101 @@ def _scene_treatment(
     draw.text((60, height - 82), footer, font=_font(40), fill=assets["ink_rgb"])
 
 
+def product_logo_for(row: dict, brand_voice: dict | None) -> tuple[str, str] | None:
+    """The product a row sells, when the brand supplied its logo.
+
+    The brand key ``product_logos`` holds "slug: relative/path.png"
+    pairs (';'-separated, paths relative to the store's visuals
+    folder). A row matches a product when the slug appears in its
+    topic or draft. Returns (slug, relative path) or None — a post
+    that names no known product gets no badge.
+    """
+    raw = str((brand_voice or {}).get("product_logos") or "").strip()
+    if not raw:
+        return None
+    haystack = f"{row.get('topic', '')} {row.get('draft', '')}".lower()
+    for pair in raw.split(";"):
+        slug, sep, rel = pair.partition(":")
+        slug, rel = slug.strip().lower(), rel.strip()
+        if sep and slug and rel and slug in haystack:
+            return slug, rel
+    return None
+
+
+def _product_badge(logo_path: Path) -> Image.Image | None:
+    """A white rounded badge carrying a product logo, or None.
+
+    The badge is a designed element (soft shadow, generous
+    padding), sized to the logo's own aspect: selling visuals show
+    WHICH product they sell, integrated with the composition
+    rather than stamped on it.
+    """
+    try:
+        logo = Image.open(logo_path).convert("RGBA")
+    except OSError:
+        return None
+    badge_h = 84
+    inner_h = badge_h - 24
+    scale = inner_h / max(1, logo.height)
+    logo_w = max(1, int(logo.width * scale))
+    logo = logo.resize((logo_w, inner_h))
+    badge_w = logo_w + 32
+    badge = Image.new("RGBA", (badge_w + 16, badge_h + 16), (0, 0, 0, 0))
+    bd = ImageDraw.Draw(badge)
+    bd.rounded_rectangle([8, 11, badge_w + 8, badge_h + 11], radius=20, fill=(0, 0, 0, 90))
+    bd.rounded_rectangle([4, 4, badge_w + 4, badge_h + 4], radius=20, fill=(255, 255, 255, 255))
+    badge.alpha_composite(logo, (20, 16))
+    return badge
+
+
 def _concept_treatment(
     img: Image.Image,
     row: dict,
     brand_voice: dict | None = None,
     headline: str | None = None,
+    product_logo: Path | None = None,
 ) -> None:
     """Concept style over a plate: one metaphor, arranged type.
 
-    Only two elements: a small brand wordmark on a primary-colour
-    chip in the top-left corner, and the headline. The headline is
-    ARRANGED into the frame, never just stamped on it: direction
-    reserves the top band of the plate as a dark, empty headline
-    zone, a soft gradient scrim in the brand primary grows that
-    zone out of the image itself (no hard band, no pasted panel),
-    and the headline — the director's short line when one was
-    written, else the draft's first point — is fitted into the
-    zone over up to two lines.
+    Elements: the brand wordmark chip (top-left), the headline,
+    and — on a selling post — the product's logo on a white badge
+    (top-right). The headline is ARRANGED into the frame, never
+    just stamped on it: direction reserves the top band of the
+    plate as a dark, empty headline zone, a soft gradient scrim in
+    the brand primary grows that zone out of the image itself (no
+    hard band, no pasted panel), and the director's short headline
+    is fitted into the zone over up to two lines. There is NO
+    fallback to the draft's sentences: a concept poster either
+    carries the director's designed line or carries no headline at
+    all — a stamped caption sentence is exactly what this style
+    exists to avoid.
     """
     assets = resolve_assets(brand_voice)
-    draw = ImageDraw.Draw(img)
+    badge = _product_badge(product_logo) if product_logo is not None else None
+    badge_w = badge.width - 16 if badge is not None else 0
     text = (headline or "").strip()
-    if not text:
-        points = split_points(row.get("draft", ""))
-        text = points[0] if points else row.get("topic", "")
-    headline_font, headline_lines = _fit(draw, text, 80, img.width - 120, 2)
-    # The scrim is sized to the block it carries (the scene
-    # treatment's rule: type never runs off its ground), then fades
-    # out well above the metaphor.
-    block_bottom = 150 + 92 * len(headline_lines) + 46
-    depth = min(img.height, block_bottom + 90)
-    mask = Image.new("L", (1, img.height), 0)
-    for y in range(img.height):
-        alpha = int(170 * max(0.0, 1 - y / depth) ** 0.7) if y < depth else 0
-        mask.putpixel((0, y), alpha)
-    img.paste(
-        Image.new("RGB", img.size, assets["primary_rgb"]),
-        (0, 0),
-        mask.resize(img.size),
-    )
+    headline_lines: list[str] = []
+    headline_font = None
+    if text:
+        draw = ImageDraw.Draw(img)
+        reserve = badge_w + 24 if badge is not None else 0
+        headline_font, headline_lines = _fit(
+            draw, text, 80, img.width - 120 - reserve, 2
+        )
+        # The scrim is sized to the block it carries (the scene
+        # treatment's rule: type never runs off its ground), then
+        # fades out well above the metaphor.
+        block_bottom = 150 + 92 * len(headline_lines) + 46
+        depth = min(img.height, block_bottom + 90)
+        mask = Image.new("L", (1, img.height), 0)
+        for y in range(img.height):
+            alpha = int(170 * max(0.0, 1 - y / depth) ** 0.7) if y < depth else 0
+            mask.putpixel((0, y), alpha)
+        img.paste(
+            Image.new("RGB", img.size, assets["primary_rgb"]),
+            (0, 0),
+            mask.resize(img.size),
+        )
     draw = ImageDraw.Draw(img)
     wordmark_font = _font(48)
     wordmark_width = draw.textlength(assets["brand_name"], font=wordmark_font)
@@ -556,6 +612,8 @@ def _concept_treatment(
         draw.text((63, y + 3), line, font=headline_font, fill=(10, 18, 38))
         draw.text((60, y), line, font=headline_font, fill=(255, 255, 255))
         y += 92
+    if badge is not None:
+        img.paste(badge, (img.width - 44 - badge_w - 4, 34), badge)
 
 
 def _render_plate_single(
@@ -570,8 +628,16 @@ def _render_plate_single(
     """One still visual rendered over a generated plate."""
     width, height = TEMPLATES[template]
     img = _plate_base(plate_path, (width, height))
+    product_slug, product_path = "", None
     if style == "concept":
-        _concept_treatment(img, row, brand_voice, headline=headline)
+        found = product_logo_for(row, brand_voice)
+        if found:
+            candidate = Path(out_dir) / found[1]
+            if candidate.exists():
+                product_slug, product_path = found[0], candidate
+        _concept_treatment(
+            img, row, brand_voice, headline=headline, product_logo=product_path
+        )
         diameter, badge_x, badge_y = _badge_placement(width, height)
     else:
         if template == "banner":
@@ -601,6 +667,7 @@ def _render_plate_single(
         "character": character,
         "style": style,
         "plate": {"used": True, "reason": ""},
+        "product_logo": product_slug,
     }
     return path, manifest
 
@@ -817,6 +884,7 @@ def _render_carousel(
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
+    product_slug = ""
     character: dict = {"used": False, "requested": False, "reference": "", "reason": ""}
     for index, slide in enumerate(plan, start=1):
         footer = (
@@ -825,7 +893,15 @@ def _render_carousel(
         if index == 1 and plate_path is not None:
             img = _plate_base(plate_path, (width, height))
             if style == "concept":
-                _concept_treatment(img, row, brand_voice, headline=headline)
+                found = product_logo_for(row, brand_voice)
+                logo_path = None
+                if found:
+                    candidate = out / found[1]
+                    if candidate.exists():
+                        product_slug, logo_path = found[0], candidate
+                _concept_treatment(
+                    img, row, brand_voice, headline=headline, product_logo=logo_path
+                )
             else:
                 _scene_treatment(img, row, brand_voice, footer_text=footer)
         else:
@@ -879,6 +955,7 @@ def _render_carousel(
     if plate_path is not None:
         manifest["style"] = style
         manifest["plate"] = {"used": True, "reason": ""}
+        manifest["product_logo"] = product_slug
     return paths[0], manifest
 
 

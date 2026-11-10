@@ -48,7 +48,7 @@ BRAND_KEYS = (
     "brand_name", "services", "audience", "tone", "rules",
     "required_hashtags", "banned_phrases", "cta_markers",
     "character_name", "character_image", "character_rules",
-    "character_sheet", "brand_colors", "brand_fonts", "logo_usage",
+    "character_sheet", "brand_colors", "brand_fonts", "logo_usage", "product_logos",
     "positioning", "journey",
     "template_sizes", "proof_baseline", "min_caption_chars", "voice_samples",
     "allowed_scripts",

@@ -308,6 +308,13 @@ class Store:
         # that never send samples are never sample-matched.
         if raw.get("voice_samples", "").strip():
             voice["voice_samples"] = raw["voice_samples"].strip()
+        # Product logos the Designer badges onto selling visuals
+        # ("slug: relative/path.png" pairs, ';'-separated): opt-in,
+        # present only when the brand sells named products and has
+        # supplied their logos (owner's direction, 2026-11-10: a
+        # selling post must show WHICH product it sells).
+        if raw.get("product_logos", "").strip():
+            voice["product_logos"] = raw["product_logos"].strip()
         # Extra letter scripts the brand legitimately writes in
         # (the checker's unexpected_script rule): opt-in like the
         # floor, split on ',' or ';', present only when set.
