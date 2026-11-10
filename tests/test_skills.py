@@ -105,8 +105,12 @@ def test_brand_voice_carries_the_depth_floor_from_the_store(tmp_path):
 
 
 def test_copywriter_skills_forbid_cost_talk_and_disclaimers():
-    # Owner's rule, 2026-11-04: public content never talks cost
-    # and never carries a no-pressure disclaimer.
+    # Owner's rules: for brands whose data keeps pricing in the
+    # sales conversation (2026-11-04), content never talks cost;
+    # pricing follows the brand's approved data, which always wins
+    # (2026-11-10: the shop's posts publish approved prices). A
+    # no-pressure disclaimer is forbidden for every brand.
     text = load_skills("copywriter")
-    assert "never discussed in content" in text
+    assert "always wins" in text
+    assert "never discussed" in text
     assert "no-pressure disclaimer" in text

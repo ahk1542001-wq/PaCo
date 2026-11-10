@@ -382,6 +382,18 @@ def draft_and_check(
     )
 
 
+def _approved_brand_facts(store: Store) -> str:
+    """The brand's owner-approved facts (Brand Builder levels) as one
+    context block. The judge works from what the owner approved, never
+    from the model's own priors about this business's offer."""
+    parts = []
+    for row in store.read_dataset("brand_build"):
+        content = (row.get("content") or "").strip()
+        if content and row.get("status") == "approved":
+            parts.append(content)
+    return "\n".join(parts)[:4000]
+
+
 def _review_tail(
     store: Store,
     client,
@@ -444,19 +456,22 @@ def _review_tail(
         # no judge, so the drafting client object never doubles as
         # the judge through this path.
         verdict_client = judge if (judge is not None and judge is not client) else client
+        verdict_draft = {
+            "text": text,
+            "platform": item.get("platform", ""),
+            "topic": item.get("topic", ""),
+            "brief": item.get("brief", ""),
+            "brand_facts": _approved_brand_facts(store),
+        }
         try:
-            verdict = verdict_client.verdict(
-                {"text": text, "platform": item.get("platform", "")}, summary
-            )
+            verdict = verdict_client.verdict(verdict_draft, summary)
         except Exception as exc:
             if verdict_client is client:
                 raise
             # A failing judge must not strand the run: fall back to
             # the drafting client's verdict and SAY SO in the
             # evidence, so the degradation is visible on the card.
-            verdict = client.verdict(
-                {"text": text, "platform": item.get("platform", "")}, summary
-            )
+            verdict = client.verdict(verdict_draft, summary)
             summary += f"\n[JUDGE FALLBACK] judge error ({exc}); verdict from the drafting client"
         reasons = "; ".join(verdict.get("reasons", []))
         summary += f"\n[MODEL VERDICT] {verdict.get('verdict', '')} - {reasons}"

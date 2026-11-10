@@ -650,3 +650,24 @@ def test_direct_plate_carries_the_director_headline(tmp_path):
     )
     assert plate["used"] is True
     assert concept["headline"]
+
+
+def test_meta_concept_instruction_demands_product_identity(tmp_path, monkeypatch):
+    """The concept direction must carry the product itself (owner's
+    rule, 2026-11-10): a metaphor a viewer cannot tie to the product
+    being sold has failed, however pretty it is."""
+    client = MetaModelClient(api_key="<redacted>", usage_log=tmp_path / "u.jsonl")
+    seen = {}
+
+    def capturing_chat(messages, model=None, **kwargs):
+        seen["messages"] = messages
+        reply = json.dumps(
+            {"concept": "C", "prompt": CONCEPT_PROMPT,
+             "no_exceptions": "No exceptions: every bubble lands on the umbrella."}
+        )
+        return {"choices": [{"message": {"content": reply}}]}
+
+    monkeypatch.setattr(client, "chat", capturing_chat)
+    client.direct_visual({"topic": "T"}, "draft", {}, "concept")
+    sent = " ".join(m["content"] for m in seen["messages"])
+    assert "can tell what product this is" in sent
