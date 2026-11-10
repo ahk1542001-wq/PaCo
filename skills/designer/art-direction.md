@@ -18,3 +18,9 @@ into the space the image leaves.
   product's mark, colours or form built into the metaphor object,
   so the product is recognisable without reading a word. A generic
   object that could advertise anything else has failed.
+
+- Promo style (bright direct-response posters): light brand
+  background, the offer itself as the headline, the product's real
+  logo large, short benefit lines with ticks, the price set big,
+  a primary brand band at the foot. Facts only from the finished
+  draft; nothing that belongs in the sales conversation.
