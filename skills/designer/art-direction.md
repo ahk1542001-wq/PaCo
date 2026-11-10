@@ -24,3 +24,9 @@ into the space the image leaves.
   logo large, short benefit lines with ticks, the price set big,
   a primary brand band at the foot. Facts only from the finished
   draft; nothing that belongs in the sales conversation.
+
+Type rule for every poster style: headlines are short and punchy —
+the fewest words that hit. The director names one emphasis phrase
+inside the headline and the renderer sets it highlighted (a solid
+accent chip) and bold against the rest. Flat, single-weight text
+typed across a photo is not design and is never acceptable.

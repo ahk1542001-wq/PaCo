@@ -223,11 +223,14 @@ class MetaModelClient:
                 "Direct one still visual in the promo style (a bright "
                 "direct-response poster composed from brand assets; there is "
                 "no image prompt and no generated plate). "
-                "Reply with JSON only: {concept, headline, benefits, price_line}. "
+                "Reply with JSON only: {concept, headline, emphasis, benefits, price_line}. "
                 "concept: one line naming the offer. "
                 "headline: the poster's headline as a designer would set it: "
-                "the product name and its key term, short, in the language mix "
-                "the draft itself uses. "
+                "the product name and its key term, short and punchy, in the "
+                "language mix the draft itself uses. "
+                "emphasis: the one word or short phrase inside the headline "
+                "that carries the punch, copied exactly from the headline; it "
+                "will be set highlighted and bold on the poster. "
                 "benefits: up to four short benefit lines (each at most 48 "
                 "characters) copied or tightly condensed from the draft's own "
                 "offer facts only; nothing invented, and nothing that belongs "
@@ -239,14 +242,17 @@ class MetaModelClient:
         elif style == "concept":
             instruction = (
                 "Direct one still visual in the concept style (conceptual advertising). "
-                "Reply with JSON only: {concept, prompt, no_exceptions, headline}. "
+                "Reply with JSON only: {concept, prompt, no_exceptions, headline, emphasis}. "
                 "concept: one line naming the single visual metaphor that carries the "
                 "post's one benefit or pain message. Metaphor first: one object, one "
                 "scene, one idea. "
                 "headline: the poster headline, written by you: ONE short line in "
                 "the post's language (at most eight words AND at most 56 characters), "
                 "the post's hook as a designer would set it — never a full sentence "
-                "copied from the draft. "
+                "copied from the draft. Short and punchy: the fewest words that hit. "
+                "emphasis: the one word or short phrase inside the headline that "
+                "carries the punch, copied exactly from the headline; it will be "
+                "set highlighted and bold on the poster. "
                 "Legibility: a stranger must get the metaphor in one second, so every "
                 "element of the metaphor must be drawn as the literal, instantly "
                 "recognisable thing it represents: customer messages as envelopes or "
@@ -331,6 +337,7 @@ class MetaModelClient:
         prompt = str(data.get("prompt") or "").strip()
         no_exceptions = str(data.get("no_exceptions") or "").strip()
         headline = str(data.get("headline") or "").strip()
+        emphasis = str(data.get("emphasis") or "").strip()
         if style == "promo":
             benefits = [
                 str(b).strip() for b in (data.get("benefits") or []) if str(b).strip()
@@ -342,6 +349,7 @@ class MetaModelClient:
                 "prompt": "",
                 "no_exceptions": "",
                 "headline": headline,
+                "emphasis": emphasis,
                 "benefits": benefits[:4],
                 "price_line": str(data.get("price_line") or "").strip(),
             }
@@ -417,6 +425,7 @@ class MetaModelClient:
             "prompt": prompt,
             "no_exceptions": no_exceptions,
             "headline": headline,
+            "emphasis": emphasis,
         }
 
     def generate_draft(self, plan_item: dict, brand_voice: dict, context: str = "") -> dict:
@@ -1085,6 +1094,7 @@ class MockClient:
                 "prompt": "",
                 "no_exceptions": "",
                 "headline": " ".join(topic.split()[:6]),
+                "emphasis": "",
                 "benefits": [],
                 "price_line": "",
             }
@@ -1119,6 +1129,7 @@ class MockClient:
                 "prompt": prompt,
                 "no_exceptions": no_exceptions,
                 "headline": headline,
+                "emphasis": "",
             }
         character = ""
         if str(plan_item.get("character") or "").strip().lower() == "yes":
