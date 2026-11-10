@@ -13,3 +13,8 @@ into the space the image leaves.
   squeeze the words.
 - Shrink test: at thumbnail size the subject and the idea must
   still read in one glance.
+
+- A concept poster's metaphor must carry the product itself: the
+  product's mark, colours or form built into the metaphor object,
+  so the product is recognisable without reading a word. A generic
+  object that could advertise anything else has failed.

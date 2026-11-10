@@ -235,6 +235,12 @@ class MetaModelClient:
                 "chat bubbles with tails, never as abstract orbs, blobs or generic "
                 "glowing shapes. If an element could be mistaken for something else, "
                 "choose a more literal form. "
+                "Product identity: the metaphor must visibly carry the product "
+                "being sold. Build the product's own identity into the metaphor "
+                "object itself (its mark, its colours, its form), so a viewer "
+                "can tell what product this is without reading a single word. "
+                "A generic object that could advertise anything else just as "
+                "well has failed. "
                 "no_exceptions: one line, written in the metaphor's own terms, stating "
                 "that the metaphor is airtight: every instance of the metaphor element "
                 "is handled by the protective action, none appears outside it, and the "
@@ -442,7 +448,7 @@ class MetaModelClient:
 
     def verdict(self, draft: dict, check_summary: str) -> dict:
         return self._structured(
-            with_skills("Give a final verdict as JSON: {verdict: pass|revise, reasons: []} using the rule-check summary.", "brand-checker"),
+            with_skills("Give a final verdict as JSON: {verdict: pass|revise, reasons: []} using the rule-check summary. The draft carries brand_facts: this business's owner-approved brand data. Product names, model names, prices and terms in the draft that match brand_facts or the brief are owner-verified facts of the offer, however unfamiliar they may be: never flag them as invented or unsupported. Judge honesty on claims that go beyond those approved facts.", "brand-checker"),
             {"draft": draft, "check_summary": check_summary},
             self.verdict_model,
         )

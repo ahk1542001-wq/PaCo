@@ -12,11 +12,15 @@ who has never heard of the brand must finish the caption knowing:
 5. What the reader gets from the call to action, concretely
    (what the free mini-audit shows them, step by step).
 
-Prices and costs are never discussed in content, and a caption
-never carries a no-pressure disclaimer ("no obligation", "we
-won't push you"): both read as sales talk and cheapen the post.
-Pricing belongs to the conversation that follows the call to
-action, never to the post itself.
+Pricing follows the brand's approved data, and the brand data
+always wins over this general rule. Where the brand data keeps
+prices out of posts (pricing belongs to the conversation that
+follows the call to action), prices and costs are never discussed
+in content. Where the brand's approved offer publishes its prices
+in posts, state them exactly as approved, once and plainly. In
+every case a caption never carries a no-pressure disclaimer ("no
+obligation", "we won't push you"): it reads as sales talk and
+cheapens the post.
 
 Add an experience layer wherever the brand data supports one:
 what the team built, tried, or learned. Facts alone never ship.
