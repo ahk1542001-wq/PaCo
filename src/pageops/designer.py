@@ -184,6 +184,91 @@ def _fit(
     return font, lines
 
 
+def _emphasis_words(text: str, emphasis: str) -> set[int]:
+    """Indices of the words of `text` covered by the emphasis phrase.
+
+    The director copies the emphasis phrase exactly from the
+    headline, so a contiguous run of words matches; anything else
+    (missing phrase, reordered words) marks nothing rather than
+    guessing.
+    """
+    words = text.split()
+    target = (emphasis or "").split()
+    if not target or len(target) > len(words):
+        return set()
+    for start in range(len(words) - len(target) + 1):
+        if words[start : start + len(target)] == target:
+            return set(range(start, start + len(target)))
+    return set()
+
+
+def _rich_lines(draw, text: str, emphasis: str, font, max_width: int):
+    """Wrap a headline into lines of (word, is_emphasis) segments."""
+    words = text.split()
+    marked = _emphasis_words(text, emphasis)
+    lines: list[list[tuple[str, bool]]] = []
+    current: list[tuple[str, bool]] = []
+    current_width = 0.0
+    space = draw.textlength(" ", font=font)
+    for i, word in enumerate(words):
+        w = draw.textlength(word, font=font)
+        trial = current_width + (space if current else 0) + w
+        if current and trial > max_width:
+            lines.append(current)
+            current, current_width = [], 0.0
+            trial = w
+        current.append((word, i in marked))
+        current_width = trial
+    if current:
+        lines.append(current)
+    return lines
+
+
+def _fit_rich(draw, text: str, emphasis: str, start: int, max_width: int, max_lines: int):
+    """Largest font (from `start` down) whose rich wrap fits max_lines."""
+    size = start
+    while size > 30:
+        font = _font(size)
+        lines = _rich_lines(draw, text, emphasis, font, max_width)
+        if len(lines) <= max_lines:
+            return font, lines
+        size -= 6
+    font = _font(30)
+    return font, _rich_lines(draw, text, emphasis, font, max_width)[:max_lines]
+
+
+def _draw_rich_headline(
+    draw, lines, x: int, y: int, font, base_fill, chip_fill, chip_text_fill,
+    *, shadow: bool = False,
+) -> int:
+    """Draw wrapped headline lines with emphasis words on highlight
+    chips. Returns the y below the block. Type is designed here:
+    the key phrase sits on a solid accent chip, never just typed.
+    """
+    space = draw.textlength(" ", font=font)
+    step = font.size + int(font.size * 0.35)
+    for line in lines:
+        cx = x
+        for word, hot in line:
+            w = draw.textlength(word, font=font)
+            if hot:
+                draw.rounded_rectangle(
+                    [cx - 9, y - 5, cx + w + 9, y + font.size + 9],
+                    radius=12,
+                    fill=chip_fill,
+                )
+                if shadow:
+                    draw.text((cx + 2, y + 2), word, font=font, fill=(10, 18, 38))
+                draw.text((cx, y), word, font=font, fill=chip_text_fill)
+            else:
+                if shadow:
+                    draw.text((cx + 3, y + 3), word, font=font, fill=(10, 18, 38))
+                draw.text((cx, y), word, font=font, fill=base_fill)
+            cx += w + space
+        y += step
+    return y
+
+
 def template_for(row: dict) -> str:
     fmt = (row.get("format") or "").lower()
     if "carousel" in fmt:
@@ -409,6 +494,7 @@ def direct_plate(
         "prompt": "",
         "no_exceptions": "",
         "headline": "",
+        "emphasis": "",
     }
     try:
         directed = director.direct_visual(
@@ -422,6 +508,7 @@ def direct_plate(
             "prompt": str(directed.get("prompt", "")),
             "no_exceptions": str(directed.get("no_exceptions", "")),
             "headline": str(directed.get("headline", "")),
+            "emphasis": str(directed.get("emphasis", "")),
         }
     except Exception as exc:
         return concept, {"used": False, "reason": f"direction failed: {exc}"}, None
@@ -561,6 +648,7 @@ def _concept_treatment(
     brand_voice: dict | None = None,
     headline: str | None = None,
     product_logo: Path | None = None,
+    emphasis: str | None = None,
 ) -> None:
     """Concept style over a plate: one metaphor, arranged type.
 
@@ -586,13 +674,14 @@ def _concept_treatment(
     if text:
         draw = ImageDraw.Draw(img)
         reserve = badge_w + 24 if badge is not None else 0
-        headline_font, headline_lines = _fit(
-            draw, text, 80, img.width - 120 - reserve, 2
+        headline_font, headline_lines = _fit_rich(
+            draw, text, emphasis or "", 84, img.width - 120 - reserve, 2
         )
         # The scrim is sized to the block it carries (the scene
         # treatment's rule: type never runs off its ground), then
         # fades out well above the metaphor.
-        block_bottom = 150 + 92 * len(headline_lines) + 46
+        step = headline_font.size + int(headline_font.size * 0.35)
+        block_bottom = 150 + step * len(headline_lines) + 46
         depth = min(img.height, block_bottom + 90)
         mask = Image.new("L", (1, img.height), 0)
         for y in range(img.height):
@@ -617,11 +706,12 @@ def _concept_treatment(
     draw.text(
         (68, 52), assets["brand_name"], font=wordmark_font, fill=(255, 255, 255)
     )
-    y = 150
-    for line in headline_lines:
-        draw.text((63, y + 3), line, font=headline_font, fill=(10, 18, 38))
-        draw.text((60, y), line, font=headline_font, fill=(255, 255, 255))
-        y += 92
+    if headline_lines:
+        _draw_rich_headline(
+            draw, headline_lines, 60, 150, headline_font,
+            (255, 255, 255), assets["accent_rgb"], assets["primary_rgb"],
+            shadow=True,
+        )
     if badge is not None:
         img.paste(badge, (img.width - 44 - badge_w - 4, 34), badge)
 
@@ -634,6 +724,7 @@ def _render_plate_single(
     style: str,
     template: str,
     headline: str | None = None,
+    emphasis: str | None = None,
 ) -> tuple[Path, dict]:
     """One still visual rendered over a generated plate."""
     width, height = TEMPLATES[template]
@@ -646,7 +737,8 @@ def _render_plate_single(
             if candidate.exists():
                 product_slug, product_path = found[0], candidate
         _concept_treatment(
-            img, row, brand_voice, headline=headline, product_logo=product_path
+            img, row, brand_voice, headline=headline,
+            product_logo=product_path, emphasis=emphasis,
         )
         diameter, badge_x, badge_y = _badge_placement(width, height)
     else:
@@ -724,11 +816,14 @@ def _render_promo(
     y = 156
     headline = str(direction.get("headline") or "").strip()
     if headline:
-        font, lines = _fit(draw, headline, 104, width - 120, 2)
-        for line in lines:
-            draw.text((60, y), line, font=font, fill=assets["primary_rgb"])
-            y += font.size + 18
-        y += 22
+        font, lines = _fit_rich(
+            draw, headline, str(direction.get("emphasis") or ""), 104,
+            width - 120, 2,
+        )
+        y = _draw_rich_headline(
+            draw, lines, 60, y, font,
+            assets["primary_rgb"], assets["accent_rgb"], assets["primary_rgb"],
+        ) + 22
     product_slug = ""
     found = product_logo_for(row, brand_voice)
     if found:
@@ -819,6 +914,7 @@ def render_visual(
     plate_path: Path | str | None = None,
     style: str = "scene",
     headline: str | None = None,
+    emphasis: str | None = None,
 ) -> tuple[Path, dict]:
     """Render the row's visual. Deterministic per input.
 
@@ -836,7 +932,8 @@ def render_visual(
         )
     if plate_path is not None:
         return _render_plate_single(
-            row, out_dir, brand_voice, Path(plate_path), style, template, headline=headline
+            row, out_dir, brand_voice, Path(plate_path), style, template,
+            headline=headline, emphasis=emphasis,
         )
     if template == "banner":
         return _render_banner(row, out_dir, brand_voice)
@@ -1255,6 +1352,7 @@ def produce_visual(store, row: dict, image_client=None, director=None) -> dict:
                 "prompt": "",
                 "no_exceptions": "",
                 "headline": str(direction.get("headline", "")),
+                "emphasis": str(direction.get("emphasis", "")),
             }
             plate = {
                 "used": False,
@@ -1284,6 +1382,7 @@ def produce_visual(store, row: dict, image_client=None, director=None) -> dict:
                     plate_path=plate_path,
                     style=style,
                     headline=headline,
+                    emphasis=(concept or {}).get("emphasis") or None,
                 )
             except Exception as exc:
                 plate = {"used": False, "reason": f"plate rendering failed: {exc}"}
