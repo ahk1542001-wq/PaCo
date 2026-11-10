@@ -336,6 +336,41 @@ class MetaModelClient:
                 raise ValueError(
                     "direct_visual: concept prompt missing the No exceptions clause"
                 )
+        if style == "concept":
+            # The headline is set large on the poster: it must be a
+            # short designed line, not a sentence. A trailing comma
+            # reads unfinished, and an over-long line gets one
+            # corrective retry before it is given up on (the caller
+            # then falls back to the draft's first point).
+            headline = headline.rstrip("၊, ")
+            if len(headline) > 56:
+                retry = self.chat(
+                    messages
+                    + [
+                        {"role": "assistant", "content": text},
+                        {
+                            "role": "user",
+                            "content": (
+                                "That headline is too long to set on a poster. "
+                                'Reply with JSON only: {"headline": "..."} — one short '
+                                "headline in the post's language, at most eight words."
+                            ),
+                        },
+                    ],
+                    model=self.main_model,
+                )
+                retry_text = (
+                    retry["choices"][0]["message"]["content"] or ""
+                ).strip()
+                fixed = ""
+                try:
+                    parsed = json.loads(
+                        retry_text.strip("`").removeprefix("json").strip()
+                    )
+                    fixed = str(parsed.get("headline") or "").strip()
+                except (json.JSONDecodeError, AttributeError):
+                    fixed = retry_text.strip('"')
+                headline = fixed.rstrip("၊, ") if 0 < len(fixed) <= 56 else ""
         return {
             "concept": concept,
             "prompt": prompt,

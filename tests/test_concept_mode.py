@@ -540,3 +540,43 @@ def test_concept_treatment_scrims_the_headline_zone():
     assert sum(zone) < sum((235, 235, 235)) - 120
     # ...while the metaphor area below the zone is untouched.
     assert rgb.getpixel((540, 1200)) == (235, 235, 235)
+
+
+def test_meta_concept_headline_too_long_gets_one_corrective_retry(tmp_path, monkeypatch):
+    client = MetaModelClient(api_key="<redacted>", usage_log=tmp_path / "u.jsonl")
+    calls = []
+    long_headline = "This headline rambles on and on like a whole caption sentence would"
+    replies = [
+        json.dumps(
+            {
+                "concept": "C",
+                "prompt": CONCEPT_PROMPT,
+                "no_exceptions": "No exceptions: every bubble lands on the umbrella.",
+                "headline": long_headline,
+            }
+        ),
+        json.dumps({"headline": "Every question answered"}),
+    ]
+
+    def fake_chat(messages, model=None, **kwargs):
+        calls.append(messages)
+        return {"choices": [{"message": {"content": replies[len(calls) - 1]}}]}
+
+    monkeypatch.setattr(client, "chat", fake_chat)
+    result = client.direct_visual(CONCEPT_ROW, "draft", {}, "concept")
+    assert result["headline"] == "Every question answered"
+    assert len(calls) == 2
+
+
+def test_meta_concept_headline_trailing_comma_is_stripped(tmp_path, monkeypatch):
+    reply = json.dumps(
+        {
+            "concept": "C",
+            "prompt": CONCEPT_PROMPT,
+            "no_exceptions": "No exceptions: every bubble lands on the umbrella.",
+            "headline": "Short hook,",
+        }
+    )
+    client = _meta_client(tmp_path, monkeypatch, reply)
+    result = client.direct_visual(CONCEPT_ROW, "draft", {}, "concept")
+    assert result["headline"] == "Short hook"
