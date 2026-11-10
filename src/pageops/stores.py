@@ -159,7 +159,7 @@ class StoreRegistry:
         with self._lock:
             if target.exists():
                 raise ValueError(f"A page store already exists: {dirname}")
-            store = Store(target)
+            store = Store(target, blank=True)
             store.set_brand_value("brand_name", display)
             self._cache[dirname] = store
             self._active = dirname
