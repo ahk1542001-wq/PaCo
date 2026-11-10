@@ -218,7 +218,25 @@ class MetaModelClient:
                 f" The plan item is character-marked: include the brand character "
                 f"({brand_voice.get('character_name') or 'the brand mascot'}) in the scene."
             )
-        if style == "concept":
+        if style == "promo":
+            instruction = (
+                "Direct one still visual in the promo style (a bright "
+                "direct-response poster composed from brand assets; there is "
+                "no image prompt and no generated plate). "
+                "Reply with JSON only: {concept, headline, benefits, price_line}. "
+                "concept: one line naming the offer. "
+                "headline: the poster's headline as a designer would set it: "
+                "the product name and its key term, short, in the language mix "
+                "the draft itself uses. "
+                "benefits: up to four short benefit lines (each at most 48 "
+                "characters) copied or tightly condensed from the draft's own "
+                "offer facts only; nothing invented, and nothing that belongs "
+                "in a sales conversation (no setup, activation, delivery or "
+                "warranty terms). "
+                "price_line: the price exactly as the draft states it, or an "
+                "empty string when the draft states no price."
+            )
+        elif style == "concept":
             instruction = (
                 "Direct one still visual in the concept style (conceptual advertising). "
                 "Reply with JSON only: {concept, prompt, no_exceptions, headline}. "
@@ -313,6 +331,20 @@ class MetaModelClient:
         prompt = str(data.get("prompt") or "").strip()
         no_exceptions = str(data.get("no_exceptions") or "").strip()
         headline = str(data.get("headline") or "").strip()
+        if style == "promo":
+            benefits = [
+                str(b).strip() for b in (data.get("benefits") or []) if str(b).strip()
+            ]
+            if not concept or not headline:
+                raise ValueError("direct_visual: promo reply missing concept or headline")
+            return {
+                "concept": concept,
+                "prompt": "",
+                "no_exceptions": "",
+                "headline": headline,
+                "benefits": benefits[:4],
+                "price_line": str(data.get("price_line") or "").strip(),
+            }
         if not concept or not prompt:
             raise ValueError("direct_visual: reply missing concept or prompt")
         lowered = prompt.lower()
@@ -1047,6 +1079,15 @@ class MockClient:
             brand_voice.get("brand_colors")
             or "Primary #123B8F; Accent #F5B301; Background #F7F5F0; Ink #14213D"
         )
+        if style == "promo":
+            return {
+                "concept": f"Promo poster for \"{topic}\"",
+                "prompt": "",
+                "no_exceptions": "",
+                "headline": " ".join(topic.split()[:6]),
+                "benefits": [],
+                "price_line": "",
+            }
         if style == "concept":
             concept = (
                 f"Visual metaphor for \"{topic}\": the post's one message as a "

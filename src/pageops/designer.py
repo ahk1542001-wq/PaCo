@@ -358,7 +358,7 @@ def _apply_character(
 
 
 def visual_style_for(row: dict) -> str:
-    """The row's visual style: "scene" or "concept".
+    """The row's visual style: "scene", "concept" or "promo".
 
     Rows planned before the field existed (and rows whose planner
     left it blank) default to "scene", and any unrecognised value
@@ -366,7 +366,7 @@ def visual_style_for(row: dict) -> str:
     full-treatment style.
     """
     style = str(row.get("visual_style") or "scene").strip().lower()
-    return style if style in ("scene", "concept") else "scene"
+    return style if style in ("scene", "concept", "promo") else "scene"
 
 
 def save_plate(raw: bytes, out_dir: Path | str, row: dict) -> Path:
@@ -677,6 +677,136 @@ def _render_plate_single(
         "character": character,
         "style": style,
         "plate": {"used": True, "reason": ""},
+        "product_logo": product_slug,
+    }
+    return path, manifest
+
+
+def _render_promo(
+    row: dict,
+    out_dir: Path | str,
+    brand_voice: dict | None,
+    direction: dict,
+) -> tuple[Path, dict]:
+    """Promo style: a bright direct-response poster composed from
+    brand assets. No generated plate: the light brand background,
+    the offer as the headline, the product's real logo large on a
+    white tile, short benefit lines with ticks, the price set big,
+    and a primary brand band at the foot. Every fact on the poster
+    comes from the director's read of the finished draft; the
+    composition is deterministic code, so the words are exactly the
+    approved ones. The tick green is a functional colour, the same
+    in every brand's promo posters.
+    """
+    from PIL import ImageFilter
+
+    assets = resolve_assets(brand_voice)
+    width, height = TEMPLATES["poster"]
+    img = Image.new("RGB", (width, height), assets["background_rgb"])
+    draw = ImageDraw.Draw(img)
+    draw.polygon([(-40, -40), (320, -40), (-40, 250)], fill=assets["primary_rgb"])
+    draw.ellipse(
+        [width - 240, height - 430, width + 90, height - 100],
+        fill=assets["accent_rgb"],
+    )
+    # Wordmark chip, the same designed element as the concept style.
+    wordmark_font = _font(48)
+    wordmark_width = draw.textlength(assets["brand_name"], font=wordmark_font)
+    draw.rectangle(
+        [44, 38, 44 + wordmark_width + 48, 114],
+        fill=assets["primary_rgb"],
+        outline=assets["accent_rgb"],
+        width=3,
+    )
+    draw.text(
+        (68, 52), assets["brand_name"], font=wordmark_font, fill=(255, 255, 255)
+    )
+    y = 156
+    headline = str(direction.get("headline") or "").strip()
+    if headline:
+        font, lines = _fit(draw, headline, 104, width - 120, 2)
+        for line in lines:
+            draw.text((60, y), line, font=font, fill=assets["primary_rgb"])
+            y += font.size + 18
+        y += 22
+    product_slug = ""
+    found = product_logo_for(row, brand_voice)
+    if found:
+        candidate = Path(out_dir) / found[1]
+        if candidate.exists():
+            product_slug = found[0]
+            tile = 430
+            tx, ty = (width - tile) // 2, y
+            shadow = Image.new("RGBA", (tile, tile), (0, 0, 0, 0))
+            ImageDraw.Draw(shadow).rounded_rectangle(
+                [6, 14, tile - 6, tile - 2], radius=52, fill=(20, 35, 25, 90)
+            )
+            shadow = shadow.filter(ImageFilter.GaussianBlur(10))
+            img.paste(shadow, (tx, ty), shadow)
+            draw = ImageDraw.Draw(img)
+            draw.rounded_rectangle(
+                [tx, ty, tx + tile, ty + tile], radius=52, fill=(255, 255, 255)
+            )
+            logo = Image.open(candidate).convert("RGBA")
+            logo.thumbnail((tile - 70, tile - 70))
+            img.paste(
+                logo,
+                (tx + (tile - logo.width) // 2, ty + (tile - logo.height) // 2),
+                logo,
+            )
+            draw = ImageDraw.Draw(img)
+            y += tile + 46
+    for raw in (direction.get("benefits") or [])[:4]:
+        benefit = str(raw).strip()
+        if not benefit:
+            continue
+        cx, cy = 88, y + 22
+        draw.ellipse([cx - 19, cy - 19, cx + 19, cy + 19], fill=(0, 177, 64))
+        draw.line(
+            [(cx - 8, cy), (cx - 2, cy + 7), (cx + 10, cy - 8)],
+            fill=(255, 255, 255),
+            width=5,
+            joint="curve",
+        )
+        bfont, blines = _fit(draw, benefit, 41, width - 200, 1)
+        draw.text(
+            (128, y), blines[0] if blines else benefit,
+            font=bfont, fill=assets["primary_rgb"],
+        )
+        y += 62
+    price = str(direction.get("price_line") or "").strip()
+    if price:
+        y += 8
+        pfont, plines = _fit(draw, price, 92, width - 120, 1)
+        draw.text(
+            (60, y), plines[0] if plines else price,
+            font=pfont, fill=assets["primary_rgb"],
+        )
+        y += pfont.size + 16
+    draw.rectangle([0, height - 110, width, height], fill=assets["primary_rgb"])
+    draw.text(
+        (60, height - 78), assets["brand_name"],
+        font=_font(44), fill=(255, 255, 255),
+    )
+    diameter, badge_x, badge_y = _badge_placement(width, height)
+    character = _apply_character(
+        img, row, brand_voice, diameter=diameter, x=badge_x, y=badge_y
+    )
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / f"visual-{row.get('id', 'row')}-poster.png"
+    img.save(path)
+    manifest = {
+        "template": "poster",
+        "format": "poster",
+        "size": (width, height),
+        "wordmark": assets["brand_name"],
+        "primary": assets["primary"],
+        "headline": row.get("topic", ""),
+        "path": str(path),
+        "character": character,
+        "style": "promo",
+        "plate": {"used": False, "reason": "promo style composes from brand assets"},
         "product_logo": product_slug,
     }
     return path, manifest
@@ -1098,33 +1228,66 @@ def produce_visual(store, row: dict, image_client=None, director=None) -> dict:
     brand_voice = store.get_brand_voice()
     out_dir = store.data_dir / "visuals"
     out_dir.mkdir(parents=True, exist_ok=True)
+    style = visual_style_for(row)
     concept: dict | None = None
     plate: dict = {"used": False, "reason": "no image client or director configured"}
     plate_path: Path | None = None
-    if image_client is not None and director is not None:
-        concept, plate, plate_path = direct_plate(
-            row, brand_voice, out_dir, director, image_client
-        )
-    style = visual_style_for(row)
-    headline = (concept or {}).get("headline") or None
-    if plate_path is None:
-        # The plain template call, exactly the shape it has always
-        # had: the plate kwargs only enter the call when a plate
-        # actually exists.
-        path, manifest = render_visual(row, out_dir, brand_voice=brand_voice)
-    else:
+    promo_path: Path | None = None
+    promo_manifest: dict | None = None
+    if style == "promo" and director is not None:
+        # Promo composes from brand assets: direction only, never a
+        # generated plate. Any failure falls through to the normal
+        # directed/template flow below, recorded as before.
         try:
-            path, manifest = render_visual(
-                row,
-                out_dir,
-                brand_voice=brand_voice,
-                plate_path=plate_path,
-                style=style,
-                headline=headline,
+            direction = director.direct_visual(
+                row, row.get("draft", ""), brand_voice or {}, "promo"
             )
-        except Exception as exc:
-            plate = {"used": False, "reason": f"plate rendering failed: {exc}"}
+            if not isinstance(direction, dict) or not str(
+                direction.get("headline") or ""
+            ).strip():
+                raise ValueError("promo direction missing headline")
+            promo_path, promo_manifest = _render_promo(
+                row, out_dir, brand_voice, direction
+            )
+            concept = {
+                "style": "promo",
+                "concept": str(direction.get("concept", "")),
+                "prompt": "",
+                "no_exceptions": "",
+                "headline": str(direction.get("headline", "")),
+            }
+            plate = {
+                "used": False,
+                "reason": "promo style composes from brand assets; no generated plate",
+            }
+        except Exception:
+            promo_path, promo_manifest = None, None
+    if promo_path is not None and promo_manifest is not None:
+        path, manifest = promo_path, promo_manifest
+    else:
+        if image_client is not None and director is not None:
+            concept, plate, plate_path = direct_plate(
+                row, brand_voice, out_dir, director, image_client
+            )
+        headline = (concept or {}).get("headline") or None
+        if plate_path is None:
+            # The plain template call, exactly the shape it has
+            # always had: the plate kwargs only enter the call when
+            # a plate actually exists.
             path, manifest = render_visual(row, out_dir, brand_voice=brand_voice)
+        else:
+            try:
+                path, manifest = render_visual(
+                    row,
+                    out_dir,
+                    brand_voice=brand_voice,
+                    plate_path=plate_path,
+                    style=style,
+                    headline=headline,
+                )
+            except Exception as exc:
+                plate = {"used": False, "reason": f"plate rendering failed: {exc}"}
+                path, manifest = render_visual(row, out_dir, brand_voice=brand_voice)
     if concept is not None:
         manifest["concept"] = concept
     manifest["plate"] = plate
