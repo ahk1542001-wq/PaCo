@@ -509,9 +509,7 @@ def direct_plate(
             "no_exceptions": str(directed.get("no_exceptions", "")),
             "headline": str(directed.get("headline", "")),
             "emphasis": str(directed.get("emphasis", "")),
-            "features": [
-                str(f).strip() for f in (directed.get("features") or []) if str(f).strip()
-            ][:3],
+            "features": _clean_features(directed.get("features")),
             "price_line": str(directed.get("price_line") or "").strip(),
         }
     except Exception as exc:
@@ -720,6 +718,24 @@ def _concept_treatment(
         img.paste(badge, (img.width - 44 - badge_w - 4, 34), badge)
 
 
+def _clean_features(raw) -> list[str]:
+    """Feature labels as the poster can carry them: at most three,
+    at most 24 characters, no trailing ellipses or dangling
+    connectors — a truncated label on a poster is a defect, so the
+    label is cut at a word boundary instead of mid-thought."""
+    out: list[str] = []
+    for item in raw or []:
+        text = str(item).strip().rstrip(".…").strip().rstrip("+·,-").strip()
+        if not text:
+            continue
+        if len(text) > 24:
+            cut = text[:24].rsplit(" ", 1)[0].rstrip("+·,-").strip()
+            text = cut or text[:24]
+        if text:
+            out.append(text)
+    return out[:3]
+
+
 def _feature_icon(draw, cx: int, cy: int, index: int, colour) -> None:
     """One small feature glyph in a ring: star, play, envelope —
     the quiet icon row of a designed product poster, drawn in code
@@ -776,7 +792,7 @@ def _showcase_treatment(
     badge_w = badge.width - 16 if badge is not None else 0
     width, height = img.width, img.height
     # Lower scrim: the selling zone, grown from the image itself.
-    zone_top = int(height * 0.50)
+    zone_top = int(height * 0.47)
     mask = Image.new("L", (1, height), 0)
     for y in range(height):
         if y < zone_top:
@@ -820,9 +836,11 @@ def _showcase_treatment(
             font=pfont, fill=assets["accent_rgb"],
         )
         y += pfont.size + 14
-    feats = [str(f).strip() for f in (features or []) if str(f).strip()][:3]
+    feats = _clean_features(features)
     if feats:
-        row_y = height - 150
+        # The icon row belongs to the selling block: it sits right
+        # under the price, not glued to the poster's bottom edge.
+        row_y = y + 34
         col_w = (width - 80) // len(feats)
         for i, feat in enumerate(feats):
             cx = 40 + col_w * i + col_w // 2
@@ -834,6 +852,15 @@ def _showcase_treatment(
                 (cx - lw / 2, row_y + 42), label,
                 font=lfont, fill=(255, 255, 255),
             )
+    # Footer lockup: the brand name centred at the foot, the way
+    # designed posters sign themselves — it also balances the zone.
+    foot_font = _font(38)
+    foot = assets["brand_name"]
+    fw = draw.textlength(foot, font=foot_font)
+    draw.text(
+        ((width - fw) / 2, height - 66), foot,
+        font=foot_font, fill=(215, 228, 216),
+    )
 
 
 def _render_plate_single(
