@@ -443,7 +443,7 @@ def _apply_character(
 
 
 def visual_style_for(row: dict) -> str:
-    """The row's visual style: "scene", "concept" or "promo".
+    """The row's visual style: "scene", "concept", "promo" or "showcase".
 
     Rows planned before the field existed (and rows whose planner
     left it blank) default to "scene", and any unrecognised value
@@ -451,7 +451,7 @@ def visual_style_for(row: dict) -> str:
     full-treatment style.
     """
     style = str(row.get("visual_style") or "scene").strip().lower()
-    return style if style in ("scene", "concept", "promo") else "scene"
+    return style if style in ("scene", "concept", "promo", "showcase") else "scene"
 
 
 def save_plate(raw: bytes, out_dir: Path | str, row: dict) -> Path:
@@ -509,6 +509,10 @@ def direct_plate(
             "no_exceptions": str(directed.get("no_exceptions", "")),
             "headline": str(directed.get("headline", "")),
             "emphasis": str(directed.get("emphasis", "")),
+            "features": [
+                str(f).strip() for f in (directed.get("features") or []) if str(f).strip()
+            ][:3],
+            "price_line": str(directed.get("price_line") or "").strip(),
         }
     except Exception as exc:
         return concept, {"used": False, "reason": f"direction failed: {exc}"}, None
@@ -716,6 +720,122 @@ def _concept_treatment(
         img.paste(badge, (img.width - 44 - badge_w - 4, 34), badge)
 
 
+def _feature_icon(draw, cx: int, cy: int, index: int, colour) -> None:
+    """One small feature glyph in a ring: star, play, envelope —
+    the quiet icon row of a designed product poster, drawn in code
+    so it stays crisp at any size."""
+    r = 26
+    draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=colour, width=3)
+    if index % 3 == 0:
+        # star
+        import math
+
+        pts = []
+        for i in range(10):
+            ang = -math.pi / 2 + i * math.pi / 5
+            rad = 13 if i % 2 == 0 else 6
+            pts.append((cx + rad * math.cos(ang), cy + rad * math.sin(ang)))
+        draw.polygon(pts, fill=colour)
+    elif index % 3 == 1:
+        # play triangle
+        draw.polygon(
+            [(cx - 7, cy - 10), (cx - 7, cy + 10), (cx + 11, cy)], fill=colour
+        )
+    else:
+        # envelope
+        draw.rectangle([cx - 13, cy - 9, cx + 13, cy + 9], outline=colour, width=3)
+        draw.line([(cx - 13, cy - 9), (cx, cy + 2), (cx + 13, cy - 9)], fill=colour, width=3)
+
+
+def _showcase_treatment(
+    img: Image.Image,
+    row: dict,
+    brand_voice: dict | None = None,
+    headline: str | None = None,
+    emphasis: str | None = None,
+    features: list | None = None,
+    price_line: str | None = None,
+    product_logo: Path | None = None,
+) -> None:
+    """Showcase style over a plate: a designed product-experience
+    poster with the selling information set INTO the design.
+
+    The plate (directed, generated) carries the product experience
+    as one composed scene in the upper frame. The treatment adds:
+    the brand wordmark chip (top-left), the product's real logo
+    badge (top-right), then a primary gradient scrim grown out of
+    the plate's lower zone carrying the stacked rich headline, the
+    price set large, and one quiet icon row of up to three selling
+    features. Facts come only from the director's read of the
+    finished draft. It is neither an abstract metaphor (the product
+    experience IS the picture) nor a product card (no checklist,
+    no spec sheet: three features, subordinate, in one row).
+    """
+    assets = resolve_assets(brand_voice)
+    badge = _product_badge(product_logo) if product_logo is not None else None
+    badge_w = badge.width - 16 if badge is not None else 0
+    width, height = img.width, img.height
+    # Lower scrim: the selling zone, grown from the image itself.
+    zone_top = int(height * 0.50)
+    mask = Image.new("L", (1, height), 0)
+    for y in range(height):
+        if y < zone_top:
+            alpha = 0
+        else:
+            alpha = int(215 * ((y - zone_top) / max(1, height - zone_top)) ** 0.8)
+        mask.putpixel((0, y), alpha)
+    img.paste(
+        Image.new("RGB", img.size, assets["primary_rgb"]), (0, 0), mask.resize(img.size)
+    )
+    draw = ImageDraw.Draw(img)
+    wordmark_font = _font(48)
+    wordmark_width = draw.textlength(assets["brand_name"], font=wordmark_font)
+    draw.rectangle(
+        [44, 38, 44 + wordmark_width + 48, 114],
+        fill=assets["primary_rgb"],
+        outline=assets["accent_rgb"],
+        width=3,
+    )
+    draw.text(
+        (68, 52), assets["brand_name"], font=wordmark_font, fill=(255, 255, 255)
+    )
+    if badge is not None:
+        img.paste(badge, (img.width - 44 - badge_w - 4, 34), badge)
+        draw = ImageDraw.Draw(img)
+    y = int(height * 0.545)
+    text = (headline or "").strip()
+    if text:
+        reserve = 0
+        font, lines = _fit_rich(draw, text, emphasis or "", 88, width - 120 - reserve, 2)
+        y = _draw_rich_headline(
+            draw, lines, 60, y, font,
+            (255, 255, 255), assets["accent_rgb"], assets["primary_rgb"],
+            shadow=True,
+        ) + 18
+    price = (price_line or "").strip()
+    if price:
+        pfont, plines = _fit(draw, price, 66, width - 120, 1)
+        draw.text(
+            (60, y), plines[0] if plines else price,
+            font=pfont, fill=assets["accent_rgb"],
+        )
+        y += pfont.size + 14
+    feats = [str(f).strip() for f in (features or []) if str(f).strip()][:3]
+    if feats:
+        row_y = height - 150
+        col_w = (width - 80) // len(feats)
+        for i, feat in enumerate(feats):
+            cx = 40 + col_w * i + col_w // 2
+            _feature_icon(draw, cx, row_y, i, assets["accent_rgb"])
+            lfont, llines = _fit(draw, feat, 31, col_w - 24, 1)
+            label = llines[0] if llines else feat
+            lw = draw.textlength(label, font=lfont)
+            draw.text(
+                (cx - lw / 2, row_y + 42), label,
+                font=lfont, fill=(255, 255, 255),
+            )
+
+
 def _render_plate_single(
     row: dict,
     out_dir: Path | str,
@@ -725,6 +845,8 @@ def _render_plate_single(
     template: str,
     headline: str | None = None,
     emphasis: str | None = None,
+    features: list | None = None,
+    price_line: str | None = None,
 ) -> tuple[Path, dict]:
     """One still visual rendered over a generated plate."""
     width, height = TEMPLATES[template]
@@ -739,6 +861,18 @@ def _render_plate_single(
         _concept_treatment(
             img, row, brand_voice, headline=headline,
             product_logo=product_path, emphasis=emphasis,
+        )
+        diameter, badge_x, badge_y = _badge_placement(width, height)
+    elif style == "showcase":
+        found = product_logo_for(row, brand_voice)
+        if found:
+            candidate = Path(out_dir) / found[1]
+            if candidate.exists():
+                product_slug, product_path = found[0], candidate
+        _showcase_treatment(
+            img, row, brand_voice, headline=headline, emphasis=emphasis,
+            features=features, price_line=price_line,
+            product_logo=product_path,
         )
         diameter, badge_x, badge_y = _badge_placement(width, height)
     else:
@@ -915,6 +1049,8 @@ def render_visual(
     style: str = "scene",
     headline: str | None = None,
     emphasis: str | None = None,
+    features: list | None = None,
+    price_line: str | None = None,
 ) -> tuple[Path, dict]:
     """Render the row's visual. Deterministic per input.
 
@@ -934,6 +1070,7 @@ def render_visual(
         return _render_plate_single(
             row, out_dir, brand_voice, Path(plate_path), style, template,
             headline=headline, emphasis=emphasis,
+            features=features, price_line=price_line,
         )
     if template == "banner":
         return _render_banner(row, out_dir, brand_voice)
@@ -1383,6 +1520,8 @@ def produce_visual(store, row: dict, image_client=None, director=None) -> dict:
                     style=style,
                     headline=headline,
                     emphasis=(concept or {}).get("emphasis") or None,
+                    features=(concept or {}).get("features") or None,
+                    price_line=(concept or {}).get("price_line") or None,
                 )
             except Exception as exc:
                 plate = {"used": False, "reason": f"plate rendering failed: {exc}"}

@@ -30,3 +30,12 @@ the fewest words that hit. The director names one emphasis phrase
 inside the headline and the renderer sets it highlighted (a solid
 accent chip) and bold against the rest. Flat, single-weight text
 typed across a photo is not design and is never acceptable.
+
+- Showcase style (designed product-experience posters): the
+  product in use as ONE composed scene — its interface, object or
+  world woven together, instantly recognisable — with the selling
+  information set INTO the design: stacked punchy headline with
+  one highlighted emphasis phrase, the price set large, and ONE
+  quiet icon row of at most three features. Never an abstract
+  metaphor that hides the product; never a product card (logo +
+  checklist + price is a spec sheet, not a poster).

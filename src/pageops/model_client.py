@@ -218,7 +218,46 @@ class MetaModelClient:
                 f" The plan item is character-marked: include the brand character "
                 f"({brand_voice.get('character_name') or 'the brand mascot'}) in the scene."
             )
-        if style == "promo":
+        if style == "showcase":
+            instruction = (
+                "Direct one still visual in the showcase style (a designed "
+                "product-experience poster: the product in use as ONE composed "
+                "scene, with the selling information set into the design — "
+                "never a product card, never an abstract metaphor). "
+                "Reply with JSON only: {concept, prompt, headline, emphasis, "
+                "features, price_line}. "
+                "concept: one line naming the composed scene: the product "
+                "experience itself as a single designed composition — the "
+                "product's own interface, object or world in use, its elements "
+                "woven together (the way a music-player interface is woven "
+                "through headphones in a designed ad). "
+                "prompt: the image prompt for that scene, with the sections "
+                "Concept, Composition, Subject, Setting, Camera and style, "
+                "Constraints. Composition: the product experience fills the "
+                "upper frame large and instantly recognisable; the bottom 40 "
+                "percent stays calm, darker and emptier as the zone where the "
+                "selling type will be set; one calm colour field in the brand "
+                "colours; flat designed advertising look, no 3D glass stage, "
+                "no spotlight podium. The product's own identity (its shape, "
+                "its motif, its colours) must be unmistakable in the scene "
+                "itself, so a viewer knows what is being sold without reading "
+                "a word. Constraints must forbid text and logos: include the "
+                "words no text, no letters, no logos, no watermark. "
+                "headline: the poster headline, written by you: ONE short "
+                "line, short and punchy, the fewest words that hit, in the "
+                "post's language — never a full sentence copied from the draft. "
+                "emphasis: the one word or short phrase inside the headline "
+                "that carries the punch, copied exactly from the headline; it "
+                "will be set highlighted and bold on the poster. "
+                "features: up to three short selling labels (each at most 24 "
+                "characters) copied or tightly condensed from the draft's own "
+                "offer facts only; nothing invented, and nothing that belongs "
+                "in a sales conversation (no setup, activation, delivery or "
+                "warranty terms). "
+                "price_line: the price exactly as the draft states it, or an "
+                "empty string when the draft states no price."
+            )
+        elif style == "promo":
             instruction = (
                 "Direct one still visual in the promo style (a bright "
                 "direct-response poster composed from brand assets; there is "
@@ -358,6 +397,21 @@ class MetaModelClient:
         lowered = prompt.lower()
         if "no text" not in lowered or "no logo" not in lowered:
             raise ValueError("direct_visual: prompt does not forbid text and logos")
+        if style == "showcase":
+            features = [
+                str(f).strip() for f in (data.get("features") or []) if str(f).strip()
+            ]
+            if not concept or not headline:
+                raise ValueError("direct_visual: showcase reply missing concept or headline")
+            return {
+                "concept": concept,
+                "prompt": prompt,
+                "no_exceptions": "",
+                "headline": headline,
+                "emphasis": emphasis,
+                "features": features[:3],
+                "price_line": str(data.get("price_line") or "").strip(),
+            }
         if style == "concept":
             for header in (
                 "concept",
@@ -1088,6 +1142,29 @@ class MockClient:
             brand_voice.get("brand_colors")
             or "Primary #123B8F; Accent #F5B301; Background #F7F5F0; Ink #14213D"
         )
+        if style == "showcase":
+            prompt = (
+                f"Concept: the product experience of \"{topic}\" as one "
+                f"designed composition for {brand}, in the brand colours "
+                f"({colours}).\n"
+                "Composition: the product experience fills the upper frame, "
+                "large and instantly recognisable; the bottom 40 percent "
+                "stays calm, darker and empty as the selling-type zone.\n"
+                "Subject: the product experience itself, woven into one scene.\n"
+                "Setting: one calm colour field in the brand colours.\n"
+                "Camera and style: flat designed advertising look, soft even "
+                "light, high detail.\n"
+                "Constraints: no text, no letters, no logos, no watermark."
+            )
+            return {
+                "concept": f"Showcase scene for \"{topic}\"",
+                "prompt": prompt,
+                "no_exceptions": "",
+                "headline": " ".join(topic.split()[:6]),
+                "emphasis": "",
+                "features": [],
+                "price_line": "",
+            }
         if style == "promo":
             return {
                 "concept": f"Promo poster for \"{topic}\"",
