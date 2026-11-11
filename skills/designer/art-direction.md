@@ -39,3 +39,8 @@ typed across a photo is not design and is never acceptable.
   quiet icon row of at most three features. Never an abstract
   metaphor that hides the product; never a product card (logo +
   checklist + price is a spec sheet, not a poster).
+
+Product focus rule (every style): the product itself is the hero
+of the frame — for a digital product, its app icon or motif as one
+large object at the centre, at least half the frame. A lifestyle
+photo with the product small on a screen is never a hero.

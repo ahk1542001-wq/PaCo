@@ -96,3 +96,17 @@ def test_mock_showcase_direction_shape():
     assert result["headline"]
     assert "no text" in result["prompt"]
     assert result["features"] == []
+
+
+def test_clean_features_trims_and_deellipsises():
+    from pageops.designer import _clean_features
+
+    assert _clean_features(["Gemini 4 Argon +...", "YouTube Premium 1 month free bonus"]) == [
+        "Gemini 4 Argon",
+        "YouTube Premium 1 month",
+    ]
+    assert _clean_features([]) == []
+    assert _clean_features(["Own email", "  ", "Flow + NotebookLM + Colab"]) == [
+        "Own email",
+        "Flow + NotebookLM",
+    ]
