@@ -773,32 +773,40 @@ def _showcase_treatment(
     price_line: str | None = None,
     product_logo: Path | None = None,
 ) -> None:
-    """Showcase style over a plate: a designed product-experience
-    poster with the selling information set INTO the design.
+    """Showcase style over a plate: the product hero floating over
+    a split brand-colour field, with the selling information set
+    into a designed podium at the foot.
 
-    The plate (directed, generated) carries the product experience
-    as one composed scene in the upper frame. The treatment adds:
-    the brand wordmark chip (top-left), the product's real logo
-    badge (top-right), then a primary gradient scrim grown out of
-    the plate's lower zone carrying the stacked rich headline, the
-    price set large, and one quiet icon row of up to three selling
-    features. Facts come only from the director's read of the
-    finished draft. It is neither an abstract metaphor (the product
-    experience IS the picture) nor a product card (no checklist,
-    no spec sheet: three features, subordinate, in one row).
+    The plate (directed, generated) carries the product as one
+    huge floating object in the upper frame over a diagonal
+    two-tone split in the brand colours; its lower third stays
+    empty. The treatment adds: the brand wordmark chip (top-left),
+    the product's real logo badge (top-right), the stacked rich
+    headline over a soft local scrim, and a solid podium — a
+    primary-colour plinth with a lighter elliptical top surface
+    and an accent rim — carrying the price set large, one quiet
+    icon row of up to three selling features, and the brand name
+    as its signature. Facts come only from the director's read of
+    the finished draft. It is neither an abstract metaphor (the
+    product IS the picture) nor a product card (no checklist, no
+    spec sheet: three features, subordinate, in one row).
     """
     assets = resolve_assets(brand_voice)
     badge = _product_badge(product_logo) if product_logo is not None else None
     badge_w = badge.width - 16 if badge is not None else 0
     width, height = img.width, img.height
-    # Lower scrim: the selling zone, grown from the image itself.
-    zone_top = int(height * 0.47)
+    # Soft local scrim behind the headline only: the headline zone
+    # darkens, the hero above it stays clean.
+    head_top = int(height * 0.44)
+    plinth_top = int(height * 0.70)
     mask = Image.new("L", (1, height), 0)
     for y in range(height):
-        if y < zone_top:
+        if y < head_top:
             alpha = 0
+        elif y < plinth_top:
+            alpha = int(150 * ((y - head_top) / max(1, plinth_top - head_top)) ** 0.7)
         else:
-            alpha = int(215 * ((y - zone_top) / max(1, height - zone_top)) ** 0.8)
+            alpha = 0
         mask.putpixel((0, y), alpha)
     img.paste(
         Image.new("RGB", img.size, assets["primary_rgb"]), (0, 0), mask.resize(img.size)
@@ -818,47 +826,60 @@ def _showcase_treatment(
     if badge is not None:
         img.paste(badge, (img.width - 44 - badge_w - 4, 34), badge)
         draw = ImageDraw.Draw(img)
-    y = int(height * 0.545)
+    y = int(height * 0.50)
     text = (headline or "").strip()
     if text:
-        reserve = 0
-        font, lines = _fit_rich(draw, text, emphasis or "", 88, width - 120 - reserve, 2)
-        y = _draw_rich_headline(
+        font, lines = _fit_rich(draw, text, emphasis or "", 88, width - 120, 2)
+        _draw_rich_headline(
             draw, lines, 60, y, font,
             (255, 255, 255), assets["accent_rgb"], assets["primary_rgb"],
             shadow=True,
-        ) + 18
+        )
+    # The podium: a solid plinth whose top surface catches the
+    # light. Body first, then the elliptical top, then its rim.
+    primary = assets["primary_rgb"]
+    top_fill = tuple(min(255, int(c + (255 - c) * 0.20)) for c in primary)
+    ry = int(height * 0.034)
+    draw.rectangle([0, plinth_top, width, height], fill=primary)
+    draw.ellipse(
+        [-int(width * 0.08), plinth_top - ry, width + int(width * 0.08), plinth_top + ry],
+        fill=top_fill,
+    )
+    draw.arc(
+        [-int(width * 0.08), plinth_top - ry, width + int(width * 0.08), plinth_top + ry],
+        start=0, end=180, fill=assets["accent_rgb"], width=4,
+    )
+    # Selling block ON the podium: price large, features one row.
+    py = plinth_top + int(height * 0.030)
     price = (price_line or "").strip()
     if price:
-        pfont, plines = _fit(draw, price, 66, width - 120, 1)
+        pfont, plines = _fit(draw, price, 76, width - 160, 1)
+        plabel = plines[0] if plines else price
+        pw = draw.textlength(plabel, font=pfont)
         draw.text(
-            (60, y), plines[0] if plines else price,
+            ((width - pw) / 2, py), plabel,
             font=pfont, fill=assets["accent_rgb"],
         )
-        y += pfont.size + 14
+        py += pfont.size + int(height * 0.036)
     feats = _clean_features(features)
     if feats:
-        # The icon row belongs to the selling block: it sits right
-        # under the price, not glued to the poster's bottom edge.
-        row_y = y + 34
         col_w = (width - 80) // len(feats)
         for i, feat in enumerate(feats):
             cx = 40 + col_w * i + col_w // 2
-            _feature_icon(draw, cx, row_y, i, assets["accent_rgb"])
+            _feature_icon(draw, cx, py, i, assets["accent_rgb"])
             lfont, llines = _fit(draw, feat, 31, col_w - 24, 1)
             label = llines[0] if llines else feat
             lw = draw.textlength(label, font=lfont)
             draw.text(
-                (cx - lw / 2, row_y + 42), label,
+                (cx - lw / 2, py + 42), label,
                 font=lfont, fill=(255, 255, 255),
             )
-    # Footer lockup: the brand name centred at the foot, the way
-    # designed posters sign themselves — it also balances the zone.
-    foot_font = _font(38)
+    # Signature on the podium's face.
+    foot_font = _font(36)
     foot = assets["brand_name"]
     fw = draw.textlength(foot, font=foot_font)
     draw.text(
-        ((width - fw) / 2, height - 66), foot,
+        ((width - fw) / 2, height - 58), foot,
         font=foot_font, fill=(215, 228, 216),
     )
 
