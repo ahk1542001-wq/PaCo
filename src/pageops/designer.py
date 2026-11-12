@@ -826,10 +826,18 @@ def _showcase_treatment(
     if badge is not None:
         img.paste(badge, (img.width - 44 - badge_w - 4, 34), badge)
         draw = ImageDraw.Draw(img)
-    y = int(height * 0.50)
     text = (headline or "").strip()
     if text:
         font, lines = _fit_rich(draw, text, emphasis or "", 88, width - 120, 2)
+        # The headline block must END above the podium: measure it
+        # (line step + glyph depth + Burmese below-marks) and pull
+        # the whole block up until it clears the plinth, instead of
+        # letting the podium's rim cut the last line.
+        step = font.size + int(font.size * 0.35)
+        block_depth = (
+            (len(lines) - 1) * step + font.size + int(font.size * 0.30) + 12
+        )
+        y = min(int(height * 0.50), plinth_top - block_depth - 56)
         _draw_rich_headline(
             draw, lines, 60, y, font,
             (255, 255, 255), assets["accent_rgb"], assets["primary_rgb"],
@@ -838,15 +846,15 @@ def _showcase_treatment(
     # The podium: a solid plinth whose top surface catches the
     # light. Body first, then the elliptical top, then its rim.
     primary = assets["primary_rgb"]
-    top_fill = tuple(min(255, int(c + (255 - c) * 0.20)) for c in primary)
-    ry = int(height * 0.034)
+    top_fill = tuple(min(255, int(c + (255 - c) * 0.30)) for c in primary)
+    ry = int(height * 0.030)
     draw.rectangle([0, plinth_top, width, height], fill=primary)
-    draw.ellipse(
-        [-int(width * 0.08), plinth_top - ry, width + int(width * 0.08), plinth_top + ry],
-        fill=top_fill,
-    )
+    # The top surface sits INSIDE the frame with visible side
+    # margins, so the plinth reads as an object, not a lid.
+    ex0, ex1 = int(width * 0.03), width - int(width * 0.03)
+    draw.ellipse([ex0, plinth_top - ry, ex1, plinth_top + ry], fill=top_fill)
     draw.arc(
-        [-int(width * 0.08), plinth_top - ry, width + int(width * 0.08), plinth_top + ry],
+        [ex0, plinth_top - ry, ex1, plinth_top + ry],
         start=0, end=180, fill=assets["accent_rgb"], width=4,
     )
     # Selling block ON the podium: price large, features one row.
@@ -858,7 +866,7 @@ def _showcase_treatment(
         pw = draw.textlength(plabel, font=pfont)
         draw.text(
             ((width - pw) / 2, py), plabel,
-            font=pfont, fill=assets["accent_rgb"],
+            font=pfont, fill=(255, 255, 255),
         )
         py += pfont.size + int(height * 0.036)
     feats = _clean_features(features)
