@@ -594,8 +594,8 @@ def _scene_treatment(
     draw.text((60, height - 82), footer, font=_font(40), fill=assets["ink_rgb"])
 
 
-def product_logo_for(row: dict, brand_voice: dict | None) -> tuple[str, str] | None:
-    """The product a row sells, when the brand supplied its logo.
+def product_logos_for(row: dict, brand_voice: dict | None) -> list[tuple[str, str]]:
+    """Every product a row sells whose logo the brand supplied.
 
     The brand key ``product_logos`` holds "slug: relative/path.png"
     pairs (';'-separated, paths relative to the store's visuals
@@ -603,19 +603,28 @@ def product_logo_for(row: dict, brand_voice: dict | None) -> tuple[str, str] | N
     topic or angle — the plan's subject fields. The draft is NOT
     matched: a passing mention in a caption (an intro post listing
     what the shop sells) is not the post's product, and badging it
-    would mislabel the post. Returns (slug, relative path) or
-    None — a post about no known product gets no badge.
+    would mislabel the post. Returns (slug, relative path) pairs
+    in brand-key order — a post selling two products is badged
+    with BOTH logos, because viewers identify a product by its
+    real logo, never by typed text alone (owner rule, 2026-11-13).
     """
     raw = str((brand_voice or {}).get("product_logos") or "").strip()
     if not raw:
-        return None
+        return []
     haystack = f"{row.get('topic', '')} {row.get('angle', '')}".lower()
+    found = []
     for pair in raw.split(";"):
         slug, sep, rel = pair.partition(":")
         slug, rel = slug.strip().lower(), rel.strip()
         if sep and slug and rel and slug in haystack:
-            return slug, rel
-    return None
+            found.append((slug, rel))
+    return found
+
+
+def product_logo_for(row: dict, brand_voice: dict | None) -> tuple[str, str] | None:
+    """The first product a row sells (see product_logos_for)."""
+    found = product_logos_for(row, brand_voice)
+    return found[0] if found else None
 
 
 def _product_badge(logo_path: Path) -> Image.Image | None:
@@ -644,6 +653,48 @@ def _product_badge(logo_path: Path) -> Image.Image | None:
     return badge
 
 
+def _product_badge_row(logo_paths) -> Image.Image | None:
+    """One badge strip carrying every product logo, or None.
+
+    A single logo keeps the plain badge; several are joined
+    side by side with a small gap, each visual box starting
+    where the previous one ended, so the strip's width minus
+    its padding equals the joined visual width — the same
+    geometry contract the treatments already use for one badge.
+    Missing or unreadable files are skipped; no readable logo
+    at all returns None.
+    """
+    badges = []
+    for path in logo_paths or []:
+        badge = _product_badge(Path(path))
+        if badge is not None:
+            badges.append(badge)
+    if not badges:
+        return None
+    if len(badges) == 1:
+        return badges[0]
+    gap = 12
+    visuals = [b.width - 16 for b in badges]
+    strip = Image.new(
+        "RGBA", (sum(visuals) + gap * (len(badges) - 1) + 16, badges[0].height),
+        (0, 0, 0, 0),
+    )
+    x = 0
+    for badge, visual in zip(badges, visuals):
+        strip.alpha_composite(badge, (x, 0))
+        x += visual + gap
+    return strip
+
+
+def _badges_for(product_logo) -> Image.Image | None:
+    """Badge image for a Path, a list of Paths, or None."""
+    if product_logo is None:
+        return None
+    if isinstance(product_logo, (list, tuple)):
+        return _product_badge_row(list(product_logo))
+    return _product_badge(Path(product_logo))
+
+
 def _concept_treatment(
     img: Image.Image,
     row: dict,
@@ -668,7 +719,7 @@ def _concept_treatment(
     exists to avoid.
     """
     assets = resolve_assets(brand_voice)
-    badge = _product_badge(product_logo) if product_logo is not None else None
+    badge = _badges_for(product_logo)
     badge_w = badge.width - 16 if badge is not None else 0
     text = (headline or "").strip()
     headline_lines: list[str] = []
@@ -792,7 +843,7 @@ def _showcase_treatment(
     spec sheet: three features, subordinate, in one row).
     """
     assets = resolve_assets(brand_voice)
-    badge = _product_badge(product_logo) if product_logo is not None else None
+    badge = _badges_for(product_logo)
     badge_w = badge.width - 16 if badge is not None else 0
     width, height = img.width, img.height
     # Soft local scrim behind the headline only: the headline zone
@@ -907,24 +958,21 @@ def _render_plate_single(
     """One still visual rendered over a generated plate."""
     width, height = TEMPLATES[template]
     img = _plate_base(plate_path, (width, height))
-    product_slug, product_path = "", None
+    slugs, paths = [], []
+    for slug, rel in product_logos_for(row, brand_voice):
+        candidate = Path(out_dir) / rel
+        if candidate.exists():
+            slugs.append(slug)
+            paths.append(candidate)
+    product_slug = ",".join(slugs)
+    product_path = paths or None
     if style == "concept":
-        found = product_logo_for(row, brand_voice)
-        if found:
-            candidate = Path(out_dir) / found[1]
-            if candidate.exists():
-                product_slug, product_path = found[0], candidate
         _concept_treatment(
             img, row, brand_voice, headline=headline,
             product_logo=product_path, emphasis=emphasis,
         )
         diameter, badge_x, badge_y = _badge_placement(width, height)
     elif style == "showcase":
-        found = product_logo_for(row, brand_voice)
-        if found:
-            candidate = Path(out_dir) / found[1]
-            if candidate.exists():
-                product_slug, product_path = found[0], candidate
         _showcase_treatment(
             img, row, brand_voice, headline=headline, emphasis=emphasis,
             features=features, price_line=price_line,
@@ -1323,14 +1371,16 @@ def _render_carousel(
         if index == 1 and plate_path is not None:
             img = _plate_base(plate_path, (width, height))
             if style == "concept":
-                found = product_logo_for(row, brand_voice)
-                logo_path = None
-                if found:
-                    candidate = out / found[1]
+                logo_paths = []
+                for slug, rel in product_logos_for(row, brand_voice):
+                    candidate = out / rel
                     if candidate.exists():
-                        product_slug, logo_path = found[0], candidate
+                        product_slug = ",".join(
+                            [product_slug, slug]) if product_slug else slug
+                        logo_paths.append(candidate)
                 _concept_treatment(
-                    img, row, brand_voice, headline=headline, product_logo=logo_path
+                    img, row, brand_voice, headline=headline,
+                    product_logo=logo_paths or None,
                 )
             else:
                 _scene_treatment(img, row, brand_voice, footer_text=footer)

@@ -44,3 +44,7 @@ Product focus rule (every style): the product itself is the hero
 of the frame — for a digital product, its app icon or motif as one
 large object at the centre, at least half the frame. A lifestyle
 photo with the product small on a screen is never a hero.
+
+## Product logos rule (owner, 2026-11-13)
+
+A poster for named products carries EVERY named product's real official logo as a badge — never typed text in place of a logo, and never one product's logo when the post sells two. Viewers identify what is being sold by the real logo; a generic plate with the product only named in text does not read as that product at all. If a post's products have registered logos, all of them appear; if a product has no registered logo yet, that gap is surfaced to the owner rather than silently shipped around.
