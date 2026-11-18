@@ -627,6 +627,133 @@ def product_logo_for(row: dict, brand_voice: dict | None) -> tuple[str, str] | N
     return found[0] if found else None
 
 
+LOGO_STYLES = ("hero", "badge", "none")
+
+
+def logo_style_for(brand_voice: dict | None) -> str:
+    """The brand's logo treatment: "hero", "badge" or "none".
+
+    A per-brand SETTING (brand data key ``logo_style``), never a
+    code-level rule: every client page differs, the owner locks
+    the choice in the brand's own data, and changing it is a data
+    edit. Unset or unrecognised resolves to "badge" — the
+    badge-strip behaviour every brand has today — so a brand
+    that never chose renders exactly as it always has.
+    """
+    style = str((brand_voice or {}).get("logo_style") or "").strip().lower()
+    return style if style in LOGO_STYLES else "badge"
+
+
+def _logo_usable(candidate: Path) -> bool:
+    """A logo file counts only if it is on disk AND decodes.
+
+    The compositors fail soft on unreadable files, so an
+    existence-only check could plan (and manifest) a hero that
+    never renders. Verifying here keeps the plan truthful.
+    """
+    if not candidate.exists():
+        return False
+    try:
+        with Image.open(candidate) as img:
+            img.verify()
+    except OSError:
+        return False
+    return True
+
+
+def _logo_plan(
+    row: dict, brand_voice: dict | None, out_dir
+) -> tuple[str, list | None, str]:
+    """How a plate render treats the products' logos.
+
+    Returns (mode, paths, slugs): the mode from the brand's
+    logo_style setting — "none" composites no product logos at
+    all; "hero" applies only when the post sells exactly ONE
+    product AND that product's logo file is on disk; everything
+    else is "badge", the badge strip, including the hero
+    fallbacks (several products sold, or the one logo's file
+    missing), which degrade to exactly today's behaviour. A
+    post selling two products whose second logo file is missing
+    is a badge post: the surviving logo is NOT promoted to a
+    hero just because it is the only file that exists. Paths
+    are the logo files that are usable (on disk AND decodable
+    as an image), in brand-key order; slugs is their
+    comma-joined manifest label. Planning on decodability
+    keeps the manifest honest: a corrupt file degrades to the
+    badge path here instead of recording a hero that the
+    compositor would silently skip.
+    """
+    style = logo_style_for(brand_voice)
+    if style == "none":
+        return "none", None, ""
+    found = product_logos_for(row, brand_voice)
+    slugs, paths = [], []
+    for slug, rel in found:
+        candidate = Path(out_dir) / rel
+        if _logo_usable(candidate):
+            slugs.append(slug)
+            paths.append(candidate)
+    if style == "hero" and len(found) == 1 and len(paths) == 1:
+        return "hero", paths, slugs[0]
+    return "badge", paths or None, ",".join(slugs)
+
+
+def _product_hero(logo_path: Path, box_w: int, box_h: int) -> Image.Image | None:
+    """A product logo as a hero element, or None.
+
+    A large white rounded panel carrying the logo at hero
+    scale — the composition's focal element, not a corner
+    badge. The logo keeps its own aspect, contain-fitted into
+    the box with generous padding, and the panel hugs the
+    fitted logo (the badge's shadow/panel geometry, enlarged).
+    The fit never enlarges a logo past twice its native size:
+    beyond that an upscale only smears the mark. An unreadable
+    logo returns None; the caller falls back to the badge
+    strip.
+    """
+    try:
+        logo = Image.open(logo_path).convert("RGBA")
+    except OSError:
+        return None
+    pad = 44
+    avail_w = max(1, box_w - 2 * pad)
+    avail_h = max(1, box_h - 2 * pad)
+    scale = min(
+        avail_w / max(1, logo.width), avail_h / max(1, logo.height), 2.0
+    )
+    logo_w = max(1, int(logo.width * scale))
+    logo_h = max(1, int(logo.height * scale))
+    logo = logo.resize((logo_w, logo_h))
+    panel_w, panel_h = logo_w + 2 * pad, logo_h + 2 * pad
+    hero = Image.new("RGBA", (panel_w + 16, panel_h + 16), (0, 0, 0, 0))
+    hd = ImageDraw.Draw(hero)
+    hd.rounded_rectangle(
+        [8, 11, panel_w + 8, panel_h + 11], radius=40, fill=(0, 0, 0, 90)
+    )
+    hd.rounded_rectangle(
+        [4, 4, panel_w + 4, panel_h + 4], radius=40, fill=(255, 255, 255, 255)
+    )
+    hero.alpha_composite(logo, (4 + pad, 4 + pad))
+    return hero
+
+
+def _hero_for(product_logo, box_w: int, box_h: int) -> Image.Image | None:
+    """The hero element for a single product logo, or None.
+
+    Accepts the shapes _badges_for accepts (a Path or a list of
+    Paths), but a hero needs exactly one logo: no logo, several
+    logos or an unreadable file returns None, and the caller
+    falls back to the badge strip.
+    """
+    if isinstance(product_logo, (list, tuple)):
+        if len(product_logo) != 1:
+            return None
+        product_logo = product_logo[0]
+    if product_logo is None:
+        return None
+    return _product_hero(Path(product_logo), box_w, box_h)
+
+
 def _product_badge(logo_path: Path) -> Image.Image | None:
     """A white rounded badge carrying a product logo, or None.
 
@@ -702,12 +829,17 @@ def _concept_treatment(
     headline: str | None = None,
     product_logo: Path | None = None,
     emphasis: str | None = None,
+    logo_mode: str = "badge",
 ) -> None:
     """Concept style over a plate: one metaphor, arranged type.
 
     Elements: the brand wordmark chip (top-left), the headline,
-    and — on a selling post — the product's logo on a white badge
-    (top-right). The headline is ARRANGED into the frame, never
+    and — on a selling post — the product's logo, treated per
+    the brand's logo_style setting (the logo_mode argument):
+    "badge" puts it on a white badge (top-right); "hero"
+    composes the frame around it as the large central hero
+    element instead; "none" composites no product logo. The
+    headline is ARRANGED into the frame, never
     just stamped on it: direction reserves the top band of the
     plate as a dark, empty headline zone, a soft gradient scrim in
     the brand primary grows that zone out of the image itself (no
@@ -719,7 +851,16 @@ def _concept_treatment(
     exists to avoid.
     """
     assets = resolve_assets(brand_voice)
-    badge = _badges_for(product_logo)
+    hero = None
+    if logo_mode == "hero":
+        hero = _hero_for(
+            product_logo, int(img.width * 0.66), int(img.height * 0.40)
+        )
+    badge = (
+        None
+        if hero is not None or logo_mode == "none"
+        else _badges_for(product_logo)
+    )
     badge_w = badge.width - 16 if badge is not None else 0
     text = (headline or "").strip()
     headline_lines: list[str] = []
@@ -767,6 +908,12 @@ def _concept_treatment(
         )
     if badge is not None:
         img.paste(badge, (img.width - 44 - badge_w - 4, 34), badge)
+    if hero is not None:
+        # The hero sits in the plate's middle band, below the
+        # headline zone: the composition is built around it.
+        hero_x = (img.width - hero.width) // 2
+        hero_y = int(img.height * 0.58) - hero.height // 2
+        img.paste(hero, (hero_x, hero_y), hero)
 
 
 def _clean_features(raw) -> list[str]:
@@ -823,6 +970,7 @@ def _showcase_treatment(
     features: list | None = None,
     price_line: str | None = None,
     product_logo: Path | None = None,
+    logo_mode: str = "badge",
 ) -> None:
     """Showcase style over a plate: the product hero floating over
     a split brand-colour field, with the selling information set
@@ -832,7 +980,11 @@ def _showcase_treatment(
     huge floating object in the upper frame over a diagonal
     two-tone split in the brand colours; its lower third stays
     empty. The treatment adds: the brand wordmark chip (top-left),
-    the product's real logo badge (top-right), the stacked rich
+    the product's real logo — treated per the brand's logo_style
+    setting (the logo_mode argument): a badge (top-right) by
+    default, or, for "hero", the large central hero element the
+    upper frame is composed around; "none" composites no product
+    logo — the stacked rich
     headline over a soft local scrim, and a solid podium — a
     primary-colour plinth with a lighter elliptical top surface
     and an accent rim — carrying the price set large, one quiet
@@ -843,7 +995,16 @@ def _showcase_treatment(
     spec sheet: three features, subordinate, in one row).
     """
     assets = resolve_assets(brand_voice)
-    badge = _badges_for(product_logo)
+    hero = None
+    if logo_mode == "hero":
+        hero = _hero_for(
+            product_logo, int(img.width * 0.58), int(img.height * 0.30)
+        )
+    badge = (
+        None
+        if hero is not None or logo_mode == "none"
+        else _badges_for(product_logo)
+    )
     badge_w = badge.width - 16 if badge is not None else 0
     width, height = img.width, img.height
     # Soft local scrim behind the headline only: the headline zone
@@ -876,6 +1037,14 @@ def _showcase_treatment(
     )
     if badge is not None:
         img.paste(badge, (img.width - 44 - badge_w - 4, 34), badge)
+        draw = ImageDraw.Draw(img)
+    if hero is not None:
+        # The hero owns the upper frame's centre, above the
+        # headline zone and clear of the wordmark chip: the
+        # plate's floating product scene is composed around it.
+        hero_x = (img.width - hero.width) // 2
+        hero_y = int(img.height * 0.24) - hero.height // 2
+        img.paste(hero, (hero_x, hero_y), hero)
         draw = ImageDraw.Draw(img)
     text = (headline or "").strip()
     if text:
@@ -958,25 +1127,19 @@ def _render_plate_single(
     """One still visual rendered over a generated plate."""
     width, height = TEMPLATES[template]
     img = _plate_base(plate_path, (width, height))
-    slugs, paths = [], []
-    for slug, rel in product_logos_for(row, brand_voice):
-        candidate = Path(out_dir) / rel
-        if candidate.exists():
-            slugs.append(slug)
-            paths.append(candidate)
-    product_slug = ",".join(slugs)
-    product_path = paths or None
+    logo_mode, product_path, product_slug = _logo_plan(row, brand_voice, out_dir)
     if style == "concept":
         _concept_treatment(
             img, row, brand_voice, headline=headline,
             product_logo=product_path, emphasis=emphasis,
+            logo_mode=logo_mode,
         )
         diameter, badge_x, badge_y = _badge_placement(width, height)
     elif style == "showcase":
         _showcase_treatment(
             img, row, brand_voice, headline=headline, emphasis=emphasis,
             features=features, price_line=price_line,
-            product_logo=product_path,
+            product_logo=product_path, logo_mode=logo_mode,
         )
         diameter, badge_x, badge_y = _badge_placement(width, height)
     else:
@@ -1008,6 +1171,8 @@ def _render_plate_single(
         "style": style,
         "plate": {"used": True, "reason": ""},
         "product_logo": product_slug,
+        "logo_style": logo_style_for(brand_voice),
+        "logo_mode": logo_mode,
     }
     return path, manifest
 
@@ -1063,7 +1228,14 @@ def _render_promo(
             assets["primary_rgb"], assets["accent_rgb"], assets["primary_rgb"],
         ) + 22
     product_slug = ""
-    found = product_logo_for(row, brand_voice)
+    # The brand's logo_style setting governs promo too: "none"
+    # composites no product logo; every other value keeps
+    # promo's own register (the logo large on a white tile).
+    found = (
+        product_logo_for(row, brand_voice)
+        if logo_style_for(brand_voice) != "none"
+        else None
+    )
     if found:
         candidate = Path(out_dir) / found[1]
         if candidate.exists():
@@ -1363,6 +1535,7 @@ def _render_carousel(
     out.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
     product_slug = ""
+    logo_mode = ""
     character: dict = {"used": False, "requested": False, "reference": "", "reason": ""}
     for index, slide in enumerate(plan, start=1):
         footer = (
@@ -1371,16 +1544,12 @@ def _render_carousel(
         if index == 1 and plate_path is not None:
             img = _plate_base(plate_path, (width, height))
             if style == "concept":
-                logo_paths = []
-                for slug, rel in product_logos_for(row, brand_voice):
-                    candidate = out / rel
-                    if candidate.exists():
-                        product_slug = ",".join(
-                            [product_slug, slug]) if product_slug else slug
-                        logo_paths.append(candidate)
+                logo_mode, logo_paths, product_slug = _logo_plan(
+                    row, brand_voice, out
+                )
                 _concept_treatment(
                     img, row, brand_voice, headline=headline,
-                    product_logo=logo_paths or None,
+                    product_logo=logo_paths, logo_mode=logo_mode,
                 )
             else:
                 _scene_treatment(img, row, brand_voice, footer_text=footer)
@@ -1436,6 +1605,8 @@ def _render_carousel(
         manifest["style"] = style
         manifest["plate"] = {"used": True, "reason": ""}
         manifest["product_logo"] = product_slug
+        manifest["logo_style"] = logo_style_for(brand_voice)
+        manifest["logo_mode"] = logo_mode
     return paths[0], manifest
 
 
@@ -1566,6 +1737,14 @@ def produce_visual(store, row: dict, image_client=None, director=None) -> dict:
     if not (row.get("draft") or "").strip():
         raise ValueError("no draft on the row: visuals follow the final draft")
     brand_voice = store.get_brand_voice()
+    # The logo treatment (logo_style) is a per-brand setting the
+    # structured voice deliberately does not carry: read it from
+    # the raw brand rows — the same raw-map pattern as the
+    # Postiz keys — and pass it through to the designer, so the
+    # brand's locked choice governs every render.
+    raw_brand = {r["key"]: r["value"] for r in store.read_dataset("brand_voice")}
+    if raw_brand.get("logo_style", "").strip():
+        brand_voice["logo_style"] = raw_brand["logo_style"].strip()
     out_dir = store.data_dir / "visuals"
     out_dir.mkdir(parents=True, exist_ok=True)
     style = visual_style_for(row)

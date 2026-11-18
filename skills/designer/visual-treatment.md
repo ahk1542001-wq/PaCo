@@ -18,3 +18,10 @@ The house treatment, learned from the owner's corrections:
 - Carousels: the cover is full-bleed and may carry a feeling
   the headline pays off; story slides keep the whole scene
   visible with the words in the grown zone below it.
+- Product-logo treatment is the brand's own `logo_style`
+  setting, read from the brand data for every visual — never
+  a fixed rule for all brands. `hero`: compose the plate
+  AROUND the single product's real logo, keeping the centre
+  clear and calm so the hero logo sits there as the focal
+  element. `badge`: the products' real logos ride in the
+  badge strip. `none`: no product logos at all.
