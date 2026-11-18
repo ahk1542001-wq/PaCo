@@ -188,6 +188,121 @@ def test_schedule_with_a_chosen_datetime_stores_it(tmp_path):
         server.shutdown()
 
 
+def test_failed_schedule_rolls_back_the_picked_datetime(tmp_path):
+    # Scheduling a row that cannot be scheduled (here: still at
+    # "checked") fails — and the picked datetime must NOT stay on
+    # the row, where it would read as a real booking.
+    store = Store(tmp_path)
+    row = store.add_plan_row(
+        {"platform": "facebook", "topic": "Post", "status": "checked"}
+    )
+    server, base = _start(store)
+    try:
+        assert _post(
+            base + "/action",
+            {
+                "id": row["id"],
+                "action": "schedule",
+                "scheduled_for": "2026-11-09T19:00",
+            },
+        ) == 400
+        final = store.read_dataset("plan")[0]
+        assert final["status"] == "checked"
+        assert final.get("scheduled_for", "") == ""
+    finally:
+        server.shutdown()
+
+
+def test_failed_schedule_keeps_an_existing_datetime(tmp_path):
+    store = Store(tmp_path)
+    row = store.add_plan_row(
+        {
+            "platform": "facebook",
+            "topic": "Post",
+            "status": "checked",
+            "scheduled_for": "2026-11-08T19:00",
+        }
+    )
+    server, base = _start(store)
+    try:
+        assert _post(
+            base + "/action",
+            {
+                "id": row["id"],
+                "action": "schedule",
+                "scheduled_for": "2026-11-09T19:00",
+            },
+        ) == 400
+        final = store.read_dataset("plan")[0]
+        assert final.get("scheduled_for", "") == "2026-11-08T19:00"
+    finally:
+        server.shutdown()
+
+
+def _contrast(foreground: str, background: str) -> float:
+    def luminance(hexs: str) -> float:
+        h = hexs.lstrip("#")
+        r, g, b = (int(h[i : i + 2], 16) / 255 for i in (0, 2, 4))
+        f = lambda c: c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+        return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+
+    la, lb = luminance(foreground), luminance(background)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+def test_primary_button_states_meet_aa_contrast(tmp_path):
+    # White on --accent (#FA1239) is 4.03:1 — below the 4.5:1 AA
+    # line for the button's 14px/600 label. Every primary-button
+    # state must clear AA against --on-accent with the tokens'
+    # ACTUAL values (not just the selector naming the token), and
+    # hover/active must stay visually distinct from resting.
+    import re
+
+    from pageops.dashboard import render_board
+
+    html = render_board(Store(tmp_path))
+    tokens = dict(re.findall(r"(--[a-z-]+):\s*(#[0-9a-fA-F]{6})", html))
+    on_accent = tokens["--on-accent"]
+    assert ".btn-primary{background:var(--accent-deep)" in html
+    assert _contrast(on_accent, tokens["--accent-deep"]) >= 4.5
+    assert ".btn-primary:hover{background:var(--accent-deeper)" in html
+    assert ".btn-primary:active{background:var(--accent-deeper)" in html
+    assert tokens["--accent-deeper"] != tokens["--accent-deep"]
+    assert _contrast(on_accent, tokens["--accent-deeper"]) >= 4.5
+
+
+def test_late_schedule_failure_rolls_back_too(tmp_path, monkeypatch):
+    # The early rejection (row not approved) is not the only
+    # failure: scheduling can also fail downstream, after the
+    # picked datetime was stored. The rollback must hold there
+    # as well, and the original error must surface (400).
+    import pageops.pipeline as pipeline
+
+    def boom(store, row_id):
+        raise RuntimeError("postiz exploded")
+
+    monkeypatch.setattr(pipeline, "schedule_approved", boom)
+    store = Store(tmp_path)
+    row = store.add_plan_row(
+        {"platform": "facebook", "topic": "Post", "status": "approved"}
+    )
+    server, base = _start(store)
+    try:
+        assert _post(
+            base + "/action",
+            {
+                "id": row["id"],
+                "action": "schedule",
+                "scheduled_for": "2026-11-09T19:00",
+            },
+        ) == 400
+        final = store.read_dataset("plan")[0]
+        assert final["status"] == "approved"
+        assert final.get("scheduled_for", "") == ""
+    finally:
+        server.shutdown()
+
+
 def test_brand_level_edit_via_dashboard_keeps_drafted(tmp_path):
     from pageops.brand_builder import draft_level, level_statuses
     from pageops.model_client import MockClient
