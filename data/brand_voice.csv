@@ -1,7 +1,18 @@
 key,value
 brand_name,FYF AI
 services,Page/WhatsApp chatbot from $150; CRM & Lead Follow-Up Pack from $200; E-Commerce Pack from $200; Content Pipeline from $150; Monthly Care
-audience,Myanmar and Thai SME owners who sell through social media pages
+audience,"Myanmar SME owners who sell through social media pages and run the page themselves (decided 2026-11-04: Myanmar SME owners broadly, in Myanmar and based in Thailand)"
 tone,"Professional and friendly, plain language, no hype"
-rules,Every post needs a clear CTA; No income-guarantee or get-rich claims; No real person's name anywhere
+rules,Write every caption in Burmese (Myanmar language); Every post needs a clear CTA; No income-guarantee or get-rich claims; No real person's name anywhere
 required_hashtags,#FYFAI; #AIAutomation; #SME
+character_name,PaCo
+character_image,assets/paco-character.png
+character_rules,PaCo appears as a circular badge composited from the reference image only; never redrawn or restyled; used on announcement and engagement posts.
+character_sheet,assets/paco-character-sheet.png
+brand_colors,"Deep Forest #0B3D2E (main, 55%: trust and all text); Fresh Paper #F4FAF5 (background, 20%); Live Green #00B140 (energy accent, 15%: symbol on dark versions, highlights, calls to action); Lime Spark #A6E22E (spark accent, 10%, sparing). Body text is always Deep Forest: Live Green on Fresh Paper measures only 2.69 contrast"
+brand_fonts,"Padauk for brand headlines and body text; Noto Sans Myanmar up to Black 900 where a heavier headline is needed; the wordmark is vector artwork in the logo kit, never typed text"
+logo_usage,"The Opening Path symbol: a central Y opening wide like a road into the future, the two Fs embedded as curved flanks (FYF = For Your Future). Master artwork in the brand kit (symbol SVGs in forest, live green, lime, black and white; horizontal and stacked lockups; app icon; favicons). Primary lockup: forest symbol and wordmark with the FOR YOUR FUTURE tagline; on dark backgrounds the Live Green symbol with a Fresh Paper wordmark. Clear space is 25% of the symbol height on all sides; minimum size 32 px digital or 12 mm print. Letters are either absent or embedded in the mark, never plain big letters. Never stretch, rotate, recolour outside the palette, add shadows, or place the mark on clashing backgrounds"
+template_sizes,poster 1080x1350; thumb 1080x1080; banner 1640x924; carousel slide 1080x1080; video frame 1080x1920
+proof_baseline,"FYF AI page starting baseline (Facebook, 90 days to 31 October 2026): 15 followers; 970 views; 131 unique viewers; 44 engagements including clicks; the three posts in the metrics store total 170 views, 13 engagements and 1 click; a starting baseline only, not a results claim"
+min_caption_chars,500
+cta_markers,audit

@@ -1,1 +1,1 @@
-id,date,platform,topic,angle,format,status,brief,draft,check_status,buffer_id
+id,date,platform,topic,angle,format,status,brief,brief_check,draft,check_status,visual,reject_reason,post_id,buffer_id,character,video,visual_style
