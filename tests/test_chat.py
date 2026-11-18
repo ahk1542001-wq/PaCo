@@ -7,6 +7,7 @@ functions the dashboard buttons call; a proposal whose assumed
 state has drifted goes stale and executes nothing; an ambiguous
 item reference proposes nothing.
 """
+import json
 import threading
 import urllib.parse
 import urllib.request
@@ -456,3 +457,96 @@ def test_chat_works_on_the_sqlite_backend(tmp_path):
     assert outcome["ok"] is True
     assert _plan_by_id(store)[row["id"]]["status"] == "approved"
     assert len(transcript(store)) == 3
+
+
+# -- Make a post -----------------------------------------------------------------
+
+
+def test_mock_parse_make_post():
+    client = MockClient()
+    parsed = client.parse_chat_intent("make a post about Canva Education Pro", {})
+    assert parsed["intent"] == "make_post"
+    assert "Canva Education Pro" in parsed["topic"]
+    parsed = client.parse_chat_intent("New post: Canva Education Pro", {})
+    assert parsed["intent"] == "make_post"
+    assert "Canva Education Pro" in parsed["topic"]
+    parsed = client.parse_chat_intent("post တစ်ခု လုပ်ပေး", {})
+    assert parsed["intent"] == "make_post" and parsed["topic"] == ""
+
+
+def test_make_post_message_proposes_and_changes_nothing(tmp_path):
+    store = Store(tmp_path)
+    message = "make a post about Canva Education Pro"
+    result = handle_message(store, MockClient(), message)
+    assert result["intent"] == "make_post"
+    assert result["proposal_id"]
+    proposal = pending_proposal(store)
+    assert proposal is not None and proposal["intent"] == "make_post"
+    payload = json.loads(proposal["payload"])
+    # The ask text on the card is the owner's message verbatim.
+    assert payload["ask_text"] == message
+    assert payload["topic"] == "Canva Education Pro"
+    assert store.read_dataset("plan") == []
+
+
+def test_confirm_make_post_creates_the_plan_row(tmp_path):
+    store = Store(tmp_path)
+    result = handle_message(store, MockClient(), "make a post about Canva Education Pro")
+    outcome = confirm_proposal(store, MockClient(), result["proposal_id"])
+    assert outcome["ok"] is True
+    # process_single also stores the brief itself as a brief row;
+    # exactly one POST row may exist, carrying the asked topic.
+    rows = [r for r in store.read_dataset("plan") if r.get("status") != "brief_received"]
+    assert len(rows) == 1
+    assert rows[0]["topic"] == "Canva Education Pro"
+    proposal = [r for r in transcript(store) if r["kind"] == "proposal"][0]
+    assert proposal["status"] == "confirmed"
+    results = [r["text"] for r in transcript(store) if r["kind"] == "result"]
+    assert any("Canva Education Pro" in text for text in results)
+
+
+def test_make_post_angle_flows_from_parse_to_the_row(tmp_path):
+    # The Mock grammar never sets an angle, so use a stub parser
+    # that returns one: the angle must travel parse -> proposal
+    # payload -> process_single -> the created row, and the row
+    # must stop at the owner's approval gate.
+    class AngleClient(MockClient):
+        def parse_chat_intent(self, message, context):
+            parsed = super().parse_chat_intent(
+                "make a post about Canva Education Pro", context
+            )
+            parsed["angle"] = "နှိုင်းယှဉ်ပြတဲ့ ပုံစံ"
+            return parsed
+
+    store = Store(tmp_path)
+    result = handle_message(store, AngleClient(), "post တစ်ခု လုပ်ပေး")
+    proposal = pending_proposal(store)
+    payload = json.loads(proposal["payload"])
+    assert payload["angle"] == "နှိုင်းယှဉ်ပြတဲ့ ပုံစံ"
+    outcome = confirm_proposal(store, MockClient(), result["proposal_id"])
+    assert outcome["ok"] is True
+    rows = [r for r in store.read_dataset("plan") if r.get("status") != "brief_received"]
+    assert len(rows) == 1
+    assert rows[0]["angle"] == "နှိုင်းယှဉ်ပြတဲ့ ပုံစံ"
+    assert rows[0]["status"] == "awaiting_approval"
+
+
+def test_cancel_make_post_leaves_plan_unchanged(tmp_path):
+    store = Store(tmp_path)
+    result = handle_message(store, MockClient(), "make a post about Canva Education Pro")
+    assert cancel_proposal(store, result["proposal_id"])["ok"] is True
+    assert store.read_dataset("plan") == []
+    outcome = confirm_proposal(store, MockClient(), result["proposal_id"])
+    assert outcome["ok"] is False
+    assert store.read_dataset("plan") == []
+
+
+def test_make_post_supersedes_a_pending_proposal(tmp_path):
+    store = Store(tmp_path)
+    _awaiting(store)
+    one = handle_message(store, MockClient(), "approve post 1")
+    two = handle_message(store, MockClient(), "make a post about Canva Education Pro")
+    proposals = {r["id"]: r for r in transcript(store) if r["kind"] == "proposal"}
+    assert proposals[one["proposal_id"]]["status"] == "superseded"
+    assert proposals[two["proposal_id"]]["status"] == "pending"
+    assert proposals[two["proposal_id"]]["intent"] == "make_post"
