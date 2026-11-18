@@ -17,8 +17,8 @@ the whole layer:
     standing brief). Only a separate confirm executes, and it calls
     the same pipeline functions the dashboard buttons call
     (approve_item, reject_item, edit_item, schedule_approved,
-    update_brand_voice, the standing-brief file write) - there is
-    no second implementation of any action.
+    update_brand_voice, process_single, the standing-brief file
+    write) - there is no second implementation of any action.
   - At confirm time the preconditions the proposal assumed are
     re-validated against the store (item status, the exact draft
     text shown, the brand value, the brief text). Any drift marks
@@ -61,6 +61,7 @@ MUTATING_INTENTS = (
     "reject",
     "edit_draft",
     "schedule",
+    "make_post",
     "set_brand",
     "set_brief",
 )
@@ -140,6 +141,8 @@ CAPABILITY_TEXT = (
     "• Reject: \"reject post 2 because <အကြောင်းရင်း>\"\n"
     "• Draft ပြင်: \"edit post 1: <စာသားအသစ်>\"\n"
     "• Schedule: \"schedule post 1 at 2026-11-10T19:00\"\n"
+    "• Post အသစ်: \"make a post about <အကြောင်းအရာ>\" (သို့) "
+    "\"post တစ်ခု လုပ်ပေး — <အကြောင်းအရာ>\"\n"
     "• Brand data ပြင်: \"set tone to <တန်ဖိုးအသစ်>\"\n"
     "• Standing brief လဲ: \"set standing brief to: <brief အသစ်>\"\n"
     "• Brand setup (အင်တာဗျူး): \"setup စမယ်\"\n"
@@ -498,7 +501,10 @@ def handle_message(store: Store, client, message: str) -> dict:
     intent = str(parsed.get("intent") or "unknown").strip().lower()
     fields = {
         name: str(parsed.get(name) or "").strip()
-        for name in ("item_ref", "reason", "new_text", "datetime", "brand_key", "value", "brief")
+        for name in (
+            "item_ref", "reason", "new_text", "datetime", "brand_key",
+            "value", "brief", "topic", "angle",
+        )
     }
 
     if intent == "start_setup":
@@ -569,6 +575,22 @@ def handle_message(store: Store, client, message: str) -> dict:
              "scheduled_display": _moment_display(moment)},
         )
 
+    if intent == "make_post":
+        # No item to resolve: the proposal IS the whole ask. The
+        # ask text is the owner's message verbatim, taken from the
+        # message itself - never from the model's output - so the
+        # card shows exactly what the owner asked for.
+        ask_text = message
+        topic = fields["topic"]
+        ask_lines = ask_text.splitlines()
+        label = topic or (ask_lines[0] if ask_lines else "")
+        return _propose(
+            store, intent,
+            f"Post အသစ် လုပ်ရန် အဆိုပြုချက် — {label}",
+            "",
+            {"ask_text": ask_text, "topic": topic, "angle": fields["angle"]},
+        )
+
     if intent == "set_brand":
         key = fields["brand_key"]
         if key not in BRAND_KEYS:
@@ -631,6 +653,10 @@ def _stale_reason(store: Store, intent: str, payload: dict) -> str:
         ):
             return "post ရဲ့ draft စာသား ပြောင်းသွားပါပြီ။ အဆိုပြုချက်က ပြခဲ့တဲ့ စာသား မဟုတ်တော့ပါ။"
         return ""
+    if intent == "make_post":
+        # No pre-existing state to drift: the proposal carries the
+        # whole ask, so there is nothing it could go stale against.
+        return ""
     if intent == "set_brand":
         current = _raw_brand_value(store, payload.get("brand_key", ""))
         if current != payload.get("old_value", ""):
@@ -671,7 +697,14 @@ def _stale_reason(store: Store, intent: str, payload: dict) -> str:
 def _execute(store: Store, client, intent: str, payload: dict, judge, image_client) -> str:
     """Run a confirmed proposal through the dashboard's own code
     paths and describe the outcome from the resulting store state."""
-    from .pipeline import approve_item, edit_item, reject_item, schedule_approved, update_brand_voice
+    from .pipeline import (
+        approve_item,
+        edit_item,
+        process_single,
+        reject_item,
+        schedule_approved,
+        update_brand_voice,
+    )
 
     item_id = payload.get("item_id", "")
     topic = payload.get("topic", "")
@@ -719,6 +752,16 @@ def _execute(store: Store, client, intent: str, payload: dict, judge, image_clie
             "Setup ပြီးဆုံးပါပြီ — target, style နဲ့ offer ကို brand data "
             "ထဲ မှတ်ပြီးပါပြီ။ နောက်တစ်ဆင့် အနေနဲ့ dashboard မှာ ပထမဆုံး "
             "brief တစ်ခု ပေးပြီး content စလို့ ရပါပြီ။"
+        )
+    if intent == "make_post":
+        row = process_single(
+            store, client, payload.get("ask_text", ""),
+            topic=payload.get("topic", ""), angle=payload.get("angle", ""),
+            judge=judge, image_client=image_client,
+        )
+        return (
+            f"Post အသစ် လုပ်ပြီးပါပြီ — {row.get('topic', '')} "
+            f"(အခြေအနေ: {row.get('status', '')})"
         )
     # set_brief: the same file write the /standing-brief route does.
     (store.data_dir / "standing-brief.txt").write_text(
@@ -880,6 +923,18 @@ def _proposal_card(store: Store, row: dict, plan_by_id: dict) -> str:
         parts.append(
             f'<div class="chat-text">{html.escape(payload.get("new_brief", ""))}</div>'
         )
+    if intent == "make_post":
+        parts.append(
+            f'<div class="chat-text">{html.escape(payload.get("ask_text", ""))}</div>'
+        )
+        if payload.get("topic"):
+            parts.append(
+                f'<div class="meta">အကြောင်းအရာ: {html.escape(payload.get("topic", ""))}</div>'
+            )
+        if payload.get("angle"):
+            parts.append(
+                f'<div class="meta">ရှုထောင့်: {html.escape(payload.get("angle", ""))}</div>'
+            )
     if intent == "approve_brand_level":
         parts.append(
             f'<div class="meta">အဆင့် {html.escape(str(payload.get("level", "")))}'

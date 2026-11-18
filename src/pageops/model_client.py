@@ -565,20 +565,25 @@ class MetaModelClient:
         code, shows the owner an exact-change proposal, and only a
         separate confirm executes. Fields: intent (status | report |
         approve | reject | edit_draft | schedule | set_brand |
-        set_brief | start_setup | unknown), item_ref (the words or number the
+        set_brief | make_post | start_setup | unknown), item_ref (the words or number the
         owner used to point at the item, copied verbatim, else ""),
         reason (reject only), new_text (edit_draft only), datetime
         (ISO 8601 when the owner names a moment, else ""), brand_key
-        and value (set_brand only), brief (set_brief only).
+        and value (set_brand only), brief (set_brief only), topic
+        and angle (make_post only: the new post's subject, copied or
+        summarised from the owner's words, and the angle as the
+        owner framed it).
         """
         instruction = (
             "Parse the page owner's chat message into ONE intent as JSON: "
-            "{intent, item_ref, reason, new_text, datetime, brand_key, value, brief}. "
+            "{intent, item_ref, reason, new_text, datetime, brand_key, value, brief, topic, angle}. "
             "intent is exactly one of: status (asking what is on the board), "
             "report (asking for the latest performance report), approve, reject, "
             "edit_draft (the owner supplies a replacement draft), schedule (the "
             "owner names a date and time), set_brand (change one brand data key), "
-            "set_brief (replace the standing brief), start_setup (the owner "
+            "set_brief (replace the standing brief), make_post (the owner asks "
+            "for a new post to be made, for example \"make a post about X\" or "
+            "\"post တစ်ခု လုပ်ပေး\"), start_setup (the owner "
             "asks to start or resume the guided brand setup interview, for "
             "example \"setup စမယ်\"), unknown (anything else). "
             "item_ref: copy the words or number the owner used to point at a post "
@@ -588,7 +593,10 @@ class MetaModelClient:
             "replacement draft text exactly as the owner wrote it, else \"\". "
             "brand_key: only a key from the context's brand_keys list, else \"\". "
             "value: the new value for that key, else \"\". brief: the full new "
-            "standing brief text, else \"\". Propose nothing and explain nothing: "
+            "standing brief text, else \"\". topic: for make_post, the subject "
+            "of the new post, copied or summarised from the owner's words; "
+            "never invent facts, else \"\". angle: for make_post, the angle "
+            "as the owner framed it, else \"\". Propose nothing and explain nothing: "
             "classification and copying only."
         )
         return self._structured(
@@ -1359,9 +1367,17 @@ class MockClient:
           "edit post 1: <new text>" or
           "edit post 1 \"<new text>\""        -> edit_draft
           "schedule post 1 at 2026-11-10T19:00" -> schedule
+          "make a post about <topic>" /
+          "new post <topic>"                  -> make_post
+          "post လုပ်ပေး" / "post တစ်ခု လုပ်ပေး" -> make_post
           "report"                            -> report
           "status" / "how many"               -> status
           "setup စမယ်" / "start setup"         -> start_setup
+        For make_post the subject comes back in topic: the
+        remainder of the message after an optional "about" for the
+        English shapes; the Burmese shapes carry no topic, so topic
+        stays "" and the chat layer falls back to the owner's own
+        words.
         Burmese references are recognised wherever the English
         ones are: the ordinals ပထမ / ပထမဆုံး / အရင်ဆုံး,
         ဒုတိယ, တတိယ, စတုတ္ထ, ပဉ္စမ, ဆဋ္ဌမ, သတ္တမ and
@@ -1382,6 +1398,8 @@ class MockClient:
             "brand_key": "",
             "value": "",
             "brief": "",
+            "topic": "",
+            "angle": "",
         }
         if "setup စမယ်" in text or low.strip() in ("setup", "start setup"):
             out["intent"] = "start_setup"
@@ -1418,6 +1436,21 @@ class MockClient:
             out["intent"] = "set_brand"
             out["brand_key"] = brand_set.group(1).lower()
             out["value"] = brand_set.group(2).strip()
+            return out
+        made = re.match(
+            r"(?:make a post|new post)\b[:\s]*(.*)$", text, re.IGNORECASE | re.DOTALL
+        )
+        if made:
+            out["intent"] = "make_post"
+            topic = made.group(1).strip()
+            if topic.lower().startswith("about "):
+                topic = topic[len("about "):].strip()
+            elif topic.lower() == "about":
+                topic = ""
+            out["topic"] = topic
+            return out
+        if "post လုပ်ပေး" in text or "post တစ်ခု လုပ်ပေး" in text:
+            out["intent"] = "make_post"
             return out
         if "approve" in low:
             out["intent"] = "approve"
