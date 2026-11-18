@@ -601,6 +601,13 @@ def handle_message(store: Store, client, message: str) -> dict:
             )
         if not fields["value"]:
             return _reply(store, intent, "တန်ဖိုး အသစ် မပါလာပါ။ ထပ်ပြောပါ။")
+        if key == "logo_style" and fields["value"].strip().lower() not in (
+            "hero", "badge", "none",
+        ):
+            return _reply(
+                store, intent,
+                "logo_style တန်ဖိုးက hero, badge, none ထဲက တစ်ခု ဖြစ်ရပါမယ်။ ထပ်ပြောပါ။",
+            )
         old = _raw_brand_value(store, key)
         return _propose(
             store, intent, f"Brand data ပြင်ရန် အဆိုပြုချက် — {key}",

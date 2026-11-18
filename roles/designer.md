@@ -41,6 +41,19 @@
   even when the metaphor is airtight.
 - For carousels the generated plate applies to slide 1 only;
   the remaining slides keep the template rendering.
+- **Product logos follow the brand's `logo_style` setting** —
+  a per-brand choice stored in the brand data and locked by
+  the owner, never a fixed house rule: every page differs.
+  Read the setting from the brand data for every visual and
+  direct for it: `hero` — the post sells exactly one product
+  with a logo on file, so direct the plate with a clear, calm
+  centre, because code composites the product's real logo
+  there at hero scale as the composition's focal element (a
+  post selling several products falls back to the badge
+  strip); `badge` — every product the post sells is badged
+  with its real logo in the badge strip; `none` — no product
+  logos are composited. A brand that has not chosen carries
+  no setting and renders as `badge`.
 - Any failure in direction or generation falls back to the
   template render and is recorded in the manifest. A plate
   failure never fails the row.
