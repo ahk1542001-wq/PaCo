@@ -938,7 +938,63 @@ def make_handler(store):
     )
 
     class Handler(BaseHTTPRequestHandler):
+        def _request_allowed(self) -> bool:
+            # The board binds 127.0.0.1 and carries no login, so
+            # the browser is the trust boundary: a page the owner
+            # visits must not be able to read the board through a
+            # rebound hostname or post its forms cross-site.
+            # Browsers always send Host, and Origin on POSTs; the
+            # board's own pages come from 127.0.0.1/localhost.
+            # Non-browser clients (curl, the test suite) send a
+            # matching Host and no Origin, so they pass.
+            host_header = (self.headers.get("Host") or "").strip()
+            host = host_header.split(":")[0]
+            if host not in ("127.0.0.1", "localhost"):
+                # Fail closed: a missing Host is refused too.
+                return False
+            if self.command == "POST":
+                origin = (self.headers.get("Origin") or "").strip()
+                if origin:
+                    # The Origin must be the board's OWN origin:
+                    # same scheme (the board is plain http), a
+                    # loopback host, and the very port this request
+                    # was addressed to — another local server on a
+                    # different port is still a foreign origin.
+                    from urllib.parse import urlparse
+
+                    try:
+                        parsed = urlparse(origin)
+                        origin_port = parsed.port
+                    except ValueError:
+                        return False
+                    host_port = (
+                        host_header.split(":", 1)[1]
+                        if ":" in host_header
+                        else None
+                    )
+                    if (
+                        parsed.scheme != "http"
+                        or parsed.hostname not in ("127.0.0.1", "localhost")
+                        or str(origin_port or "") != str(host_port or "")
+                    ):
+                        return False
+            return True
+
+        def _refuse_foreign(self) -> None:
+            body = (
+                "This dashboard only answers requests addressed "
+                "to 127.0.0.1 / localhost."
+            ).encode("utf-8")
+            self.send_response(403)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def do_GET(self):  # noqa: N802 (stdlib naming)
+            if not self._request_allowed():
+                self._refuse_foreign()
+                return
             store = registry.active()
             if self.path.startswith("/visual/"):
                 from pathlib import Path as _Path
@@ -980,6 +1036,9 @@ def make_handler(store):
             self.wfile.write(body)
 
         def do_POST(self):  # noqa: N802 (stdlib naming)
+            if not self._request_allowed():
+                self._refuse_foreign()
+                return
             from urllib.parse import parse_qs
 
             length = int(self.headers.get("Content-Length", 0))

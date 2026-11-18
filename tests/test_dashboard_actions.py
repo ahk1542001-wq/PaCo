@@ -303,6 +303,152 @@ def test_late_schedule_failure_rolls_back_too(tmp_path, monkeypatch):
         server.shutdown()
 
 
+def _raw(base, method, path, headers=None, body=None):
+    import http.client
+    from urllib.parse import urlparse
+
+    parts = urlparse(base)
+    conn = http.client.HTTPConnection(parts.hostname, parts.port, timeout=10)
+    try:
+        conn.putrequest(method, path, skip_host=True)
+        conn.putheader("Host", f"{parts.hostname}:{parts.port}")
+        for k, v in (headers or {}).items():
+            if k.lower() == "host":
+                continue
+            conn.putheader(k, v)
+        if body is not None:
+            conn.putheader("Content-Type", "application/x-www-form-urlencoded")
+            conn.putheader("Content-Length", str(len(body)))
+        conn.endheaders(body)
+        return conn.getresponse().status
+    finally:
+        conn.close()
+
+
+def _raw_with_host(base, method, path, host, headers=None, body=None):
+    import http.client
+    from urllib.parse import urlparse
+
+    parts = urlparse(base)
+    conn = http.client.HTTPConnection(parts.hostname, parts.port, timeout=10)
+    try:
+        conn.putrequest(method, path, skip_host=True)
+        conn.putheader("Host", host)
+        for k, v in (headers or {}).items():
+            conn.putheader(k, v)
+        if body is not None:
+            conn.putheader("Content-Type", "application/x-www-form-urlencoded")
+            conn.putheader("Content-Length", str(len(body)))
+        conn.endheaders(body)
+        return conn.getresponse().status
+    finally:
+        conn.close()
+
+
+def test_foreign_host_gets_403(tmp_path):
+    # DNS-rebinding shape: the browser is tricked into asking
+    # this server under an attacker's hostname.
+    store = Store(tmp_path)
+    server, base = _start(store)
+    try:
+        assert _raw_with_host(base, "GET", "/", "evil.example") == 403
+        assert _raw(base, "GET", "/") == 200
+    finally:
+        server.shutdown()
+
+
+def test_cross_site_form_post_gets_403_and_changes_nothing(tmp_path):
+    # A page the owner visits auto-submits a form to the local
+    # dashboard; the browser stamps it with the page's Origin.
+    store = Store(tmp_path)
+    row = store.add_plan_row(
+        {"platform": "facebook", "topic": "Post", "status": "awaiting_approval"}
+    )
+    server, base = _start(store)
+    try:
+        body = f"id={row['id']}&action=approve".encode()
+        status = _raw(
+            base, "POST", "/action",
+            headers={"Origin": "https://evil.example"}, body=body,
+        )
+        assert status == 403
+        assert store.read_dataset("plan")[0]["status"] == "awaiting_approval"
+    finally:
+        server.shutdown()
+
+
+def test_same_host_origin_post_still_works(tmp_path):
+    # The board's own forms post with an Origin of the board's
+    # own address, port included, exactly as a browser sends it.
+    store = Store(tmp_path)
+    row = store.add_plan_row(
+        {"platform": "facebook", "topic": "Post", "status": "awaiting_approval"}
+    )
+    server, base = _start(store)
+    try:
+        body = f"id={row['id']}&action=approve".encode()
+        status = _raw(
+            base, "POST", "/action",
+            headers={"Origin": base}, body=body,
+        )
+        assert status == 303
+        assert store.read_dataset("plan")[0]["status"] == "approved"
+    finally:
+        server.shutdown()
+
+
+def test_missing_host_gets_403(tmp_path):
+    # The Host check fails closed: no Host header, no service.
+    import http.client
+    from urllib.parse import urlparse
+
+    store = Store(tmp_path)
+    server, base = _start(store)
+    try:
+        parts = urlparse(base)
+        conn = http.client.HTTPConnection(parts.hostname, parts.port, timeout=10)
+        try:
+            conn.putrequest("GET", "/", skip_host=True)
+            conn.endheaders()
+            assert conn.getresponse().status == 403
+        finally:
+            conn.close()
+    finally:
+        server.shutdown()
+
+
+def test_foreign_host_post_gets_403(tmp_path):
+    store = Store(tmp_path)
+    server, base = _start(store)
+    try:
+        assert _raw_with_host(
+            base, "POST", "/action", "evil.example",
+            body=b"id=1&action=approve",
+        ) == 403
+    finally:
+        server.shutdown()
+
+
+def test_other_loopback_port_origin_gets_403(tmp_path):
+    # Another server on this same machine (different port) is
+    # still a foreign origin: its pages must not post here.
+    store = Store(tmp_path)
+    row = store.add_plan_row(
+        {"platform": "facebook", "topic": "Post", "status": "awaiting_approval"}
+    )
+    server, base = _start(store)
+    try:
+        body = f"id={row['id']}&action=approve".encode()
+        status = _raw(
+            base, "POST", "/action",
+            headers={"Origin": "http://127.0.0.1:9999"}, body=body,
+        )
+        assert status == 403
+        assert store.read_dataset("plan")[0]["status"] == "awaiting_approval"
+    finally:
+        server.shutdown()
+
+
 def test_brand_level_edit_via_dashboard_keeps_drafted(tmp_path):
     from pageops.brand_builder import draft_level, level_statuses
     from pageops.model_client import MockClient
