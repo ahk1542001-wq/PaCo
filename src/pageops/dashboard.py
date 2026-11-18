@@ -13,6 +13,7 @@ default 8765; data dir from PAGEOPS_DATA_DIR via Settings)
 from __future__ import annotations
 
 import html
+import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .store import Store, open_store
@@ -46,7 +47,7 @@ STATUS_TO_COLUMN: dict[str, str] = {
 
 _CSS = """
 :root{
-  --ink:#042433; --muted:#595238; --accent:#FA1239; --accent-deep:#BD0221; --blush:#FFD3C6;
+  --ink:#042433; --muted:#595238; --accent:#FA1239; --accent-deep:#BD0221; --accent-deeper:#9E021C; --blush:#FFD3C6;
   --ground:#FFFBF8; --surface:#FFFFFF; --raised:#FFF4EF; --tint:#FFD3C6; --tint-strong:#FFBBA6;
   --tint-soft:#FFE8DF; --border:#E8DAD2; --border-strong:#CBBBAE;
   --text:#042433; --text-muted:#595238; --text-faint:#7A7261; --on-accent:#FFFFFF;
@@ -62,18 +63,18 @@ body{font-family:var(--font-latin);margin:0;background:var(--ground);color:var(-
 a{color:var(--accent-deep)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 button{font-family:inherit;font-size:14px;font-weight:600;border-radius:var(--r-md);padding:10px 18px;cursor:pointer;border:1px solid transparent;transition:background-color .12s,border-color .12s}
-.btn-primary{background:var(--accent);color:var(--on-accent)}
+.btn-primary{background:var(--accent-deep);color:var(--on-accent)}
 .btn-secondary{background:var(--surface);border-color:var(--border-strong);color:var(--ink)}
 .btn-ghost{background:transparent;color:var(--accent-deep);border-color:transparent;padding:10px 10px}
 @media (hover:hover){
-  .btn-primary:hover{background:var(--accent-deep)}
+  .btn-primary:hover{background:var(--accent-deeper)}
   .btn-secondary:hover{background:var(--raised)}
   .btn-ghost:hover{text-decoration:underline}
   .card:hover{border-color:var(--border-strong)}
   .navrow:hover{background:var(--tint-soft)}
   table tr:hover td{background:var(--tint-soft)}
 }
-.btn-primary:active{background:var(--accent-deep)}
+.btn-primary:active{background:var(--accent-deeper)}
 .btn-secondary:active{background:var(--tint)}
 button:disabled{background:var(--tint-soft);color:var(--text-faint);border-color:transparent;cursor:not-allowed}
 input,textarea,select{font-family:inherit;font-size:14px;background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--r-sm);padding:10px 12px;color:var(--text)}
@@ -1136,15 +1137,48 @@ def make_handler(store):
                         from .pipeline import schedule_approved
 
                         scheduled_for = form.get("scheduled_for", "").strip()
+                        previous_for = ""
                         if scheduled_for:
                             # The owner picked the moment on the
                             # card: store it on the row first, and
                             # the Postiz client sends at that time
                             # instead of now.
+                            current = [
+                                r for r in store.read_dataset("plan")
+                                if str(r.get("id")) == str(item_id)
+                            ]
+                            previous_for = (
+                                current[0].get("scheduled_for", "") if current else ""
+                            )
                             store.update_row(
                                 "plan", item_id, {"scheduled_for": scheduled_for}
                             )
-                        schedule_approved(store, item_id)
+                        try:
+                            schedule_approved(store, item_id)
+                        except Exception:
+                            # A failed schedule must not leave the
+                            # picked moment behind: on the row it
+                            # would read as a real booking, and it
+                            # would silently become the send time
+                            # if the row were approved later.
+                            if scheduled_for:
+                                try:
+                                    store.update_row(
+                                        "plan", item_id,
+                                        {"scheduled_for": previous_for},
+                                    )
+                                except Exception as rb_exc:
+                                    # The rollback itself must never
+                                    # mask the scheduling error — but
+                                    # say so on stderr, or a stale
+                                    # datetime would go undiagnosed.
+                                    print(
+                                        f"dashboard: schedule rollback "
+                                        f"failed for item {item_id}: "
+                                        f"{rb_exc}",
+                                        file=sys.stderr,
+                                    )
+                            raise
                     elif action == "link":
                         from .pipeline import link_post
 
@@ -1155,7 +1189,7 @@ def make_handler(store):
                     self.send_response(404)
                     self.end_headers()
                     return
-            except (KeyError, PermissionError, ValueError) as exc:
+            except (KeyError, PermissionError, RuntimeError, ValueError) as exc:
                 body = f"Action failed: {exc}".encode("utf-8")
                 self.send_response(400)
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
